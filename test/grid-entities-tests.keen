@@ -1,0 +1,293 @@
+import
+	../geometry
+	../grid-entities
+	../grid-set
+
+-test-entity record
+	occupied-space grid-set
+	value string
+-move test-entity(a test-entity, dir dir4)
+	modify a, occupied-space, it + dir
+
+test
+	a test-entity grid-entities = ()
+	any a is false
+	size a is 0
+	a[0, 0] is ()
+
+test
+	entity-a test-entity = ((0, 0), (0, 1), (1, 1)), "a"
+	entity-b test-entity = ((1, 0),), "b"
+	a test-entity grid-entities = entity-a, entity-b
+	any a is true
+	a[0, 0] is entity-a
+	a[1, 0] is entity-b
+	a[0, 1] is entity-a
+	a[1, 1] is entity-a
+	a[1, 2] is ()
+
+	index-of-entity-at-pos a, (0, 0) is 0
+	index-of-entity-at-pos a, (1, 0) is 1
+	index-of-entity-at-pos a, (2, 0) is ()
+
+	update-entity-at a, (1, 0), (((1, 0),), "c") is
+		- entity-a
+		- ((1, 0),), "c"
+
+	remove-overlapping a, (1, 1).square1 is entity-b,
+	remove-overlapping a, (1, 0).square1 is entity-a,
+	remove-overlapping a, (2, 2).square1 is a
+	remove-overlapping a, a.bounds is ()
+
+	remove-entity-at a, (1, 0) is entity-a,
+	remove-entity-at a, (0, 1) is entity-b,
+
+# attempt-updates can modify an entity in place
+test
+	entities test-entity grid-entities =
+		- occupied-space: ((0, 0),), value: "a"
+	new-entities = attempt-updates entities,
+		plan-update: {set it, value, "b"}
+		on-conflict: {throw unreachable}
+	new-entities is
+		- occupied-space: ((0, 0),), value: "b"
+
+# attempt-updates can move a single entity
+test
+	entities test-entity grid-entities =
+		- occupied-space: ((0, 0),), value: "a"
+	new-entities = attempt-updates entities,
+		plan-update: of x
+			occupied-space: x.occupied-space + (1, 0)
+			value: x.value
+		on-conflict: {throw unreachable}
+	new-entities is
+		- occupied-space: ((1, 0),), value: "a"
+
+# attempt-updates moves two entities simultaneously, new positions don't conflict
+test
+	entities test-entity grid-entities =
+		- occupied-space: ((0, 0),), value: "a"
+		- occupied-space: ((1, 0),), value: "b"
+	new-entities = attempt-updates entities,
+		plan-update: {move it, east}
+		on-conflict: {throw unreachable}
+	new-entities is
+		- occupied-space: ((1, 0),), value: "a"
+		- occupied-space: ((2, 0),), value: "b"
+# Same as above test but with entities swapped
+test
+	entities test-entity grid-entities =
+		- occupied-space: ((1, 0),), value: "a"
+		- occupied-space: ((0, 0),), value: "b"
+	new-entities = attempt-updates entities,
+		plan-update: {move it, east}
+		on-conflict: {throw unreachable}
+	new-entities is
+		- occupied-space: ((2, 0),), value: "a"
+		- occupied-space: ((1, 0),), value: "b"
+
+# Two entities trying to take the same position
+test
+	move-both-together {} is
+		- occupied-space: ((1, 0),), value: "a"
+		- occupied-space: ((3, 0),), value: "b"
+	move-both-together {(), ()} is ()
+	move-both-together (of xs, _ then xs[0], ()) is
+		- occupied-space: ((2, 0),), value: "a"
+	move-both-together (of xs, _ then (), xs[1]) is
+		- occupied-space: ((2, 0),), value: "b"
+-move-both-together test-entity grid-entities
+	on-conflict test-entity?[]? mut(new test-entity[], old test-entity[])
+do
+	entities test-entity grid-entities =
+		- occupied-space: ((1, 0),), value: "a"
+		- occupied-space: ((3, 0),), value: "b"
+	attempt-updates entities,
+		plan-update: of x
+			move x, if x.value == "a" then east else west
+		on-conflict: on-conflict
+
+# Two entities moving onto a third entity
+test
+	entities test-entity grid-entities =
+		- occupied-space: ((1, 0),), value: "a"
+		- occupied-space: ((0, 1),), value: "b"
+		- occupied-space: ((0, 0),), value: "c"
+	called-on-conflict mut = false
+	res = attempt-updates entities,
+		plan-update: of x
+			occupied-space: ((0, 0),), value: x.value
+		on-conflict: of conflicting, old
+			called-on-conflict := true
+			old is entities.to
+			conflicting is
+				- occupied-space: ((0, 0),), value: "a"
+				- occupied-space: ((0, 0),), value: "b"
+				- occupied-space: ((0, 0),), value: "c"
+			()
+	called-on-conflict is true
+	res is entities
+
+# Test that an entity does not conflict with itself it staying still
+test
+	entities test-entity grid-entities =
+		- occupied-space: ((0, 0),), value: "a"
+	new-entities = attempt-updates entities,
+		plan-update: {set it, value, "b"}
+		on-conflict: {throw unreachable}
+	new-entities is
+		- occupied-space: ((0, 0),), value: "b"
+
+# Entity A moves onto B's old position, B moves onto C's position, but C is not moving
+test
+	entities test-entity grid-entities =
+		- occupied-space: ((0, 0),), value: "a"
+		- occupied-space: ((1, 0),), value: "b"
+		- occupied-space: ((2, 0),), value: "c"
+	new-entities = attempt-updates entities,
+		plan-update: of x
+			if x.value == "c"
+				x
+			else
+				modify x, occupied-space, it + east::grid-displacement
+		on-conflict: {}
+	new-entities is entities
+
+# Entities can take each other's positions in a cycle with no conflict
+test
+	entities test-entity grid-entities =
+		- occupied-space: ((0, 0),), value: "a"
+		- occupied-space: ((1, 0),), value: "b"
+	new-entities = attempt-updates entities,
+		plan-update: of x
+			dir dir4 = if x.value == "a" then east else west
+			modify x, occupied-space, it + dir
+		on-conflict: {throw unreachable}
+	new-entities is
+		- occupied-space: ((1, 0),), value: "a"
+		- occupied-space: ((0, 0),), value: "b"
+
+-test-entity-2 record
+	occupied-space grid-set
+	value0 string
+	value1 string
+-move test-entity-2(a test-entity-2, dir dir4)
+	modify a, occupied-space, it + dir
+
+test
+	entities test-entity-2 grid-entities =
+		- occupied-space: ((0, 0),), value0: "a", value1: "x"
+		- occupied-space: ((1, 0),), value0: "b", value1: "y"
+	new-entities = attempt-updates entities,
+		plan-update: of x
+			if x.value0 == "a" then move x, east else x
+		on-conflict: of xs, _
+			xs[0].value0 is "a"
+			xs[1].value0 is "b"
+			- set xs[0], value1, "z"
+			- ()
+	new-entities is
+		- occupied-space: ((1, 0),), value0: "a", value1: "z"
+
+test
+	entities test-entity-2 grid-entities =
+		- occupied-space: ((0, 0), (0, 1)), value0: "a", value1: "x"
+		- occupied-space: ((1, 0),), value0: "b", value1: "y"
+		- occupied-space: ((1, 1),), value0: "b", value1: "z"
+	new-entities = attempt-updates entities,
+		plan-update: of x
+			if x.value0 == "a" then move x, east else x
+		on-conflict: of xs, _
+			- modify xs[0], value1, it ~~ xs[1].value1
+			- ()
+	new-entities is
+		- occupied-space: ((1, 0), (1, 1)), value0: "a", value1: "xyz"
+
+test
+	entity-a test-entity = occupied-space: ((0, 0),), value: "a"
+	moved-entity-a test-entity = occupied-space: ((1, 0),), value: "a"
+	entity-b test-entity = occupied-space: ((1, 0),), value: "b"
+	entities test-entity grid-entities = entity-a, entity-b
+	conflict (test-entity, test-entity) mut[] = ()
+	wont-move = try-move entities, (0, 0), east, of conflicting
+		conflict ~= conflicting
+		dont-move
+	wont-move is ()
+	move-to::(test-entity, test-entity)[] conflict is
+		- moved-entity-a, entity-b
+
+	will-move = try-move entities, (0, 0), east, of conflicting
+		conflict ~= conflicting
+		destroy-it
+	will-move is moved-entity-a,
+	move-to::(test-entity, test-entity)[] conflict is
+		- moved-entity-a, entity-b
+
+test
+	entities test-entity-2 grid-entities =
+		- occupied-space: ((0, 0),), value0: "a", value1: "x"
+		- occupied-space: ((1, 0),), value0: "b", value1: "y"
+	result = try-move entities, (0, 0), east, of x, _
+		destroy-it-and-update set x, value1, "z"
+	result is
+		- occupied-space: ((1, 0),), value0: "a", value1: "z"
+test
+	entities test-entity-2 grid-entities =
+		- occupied-space: ((0, 0), (0, 1)), value0: "a", value1: "x"
+		- occupied-space: ((1, 0),), value0: "b", value1: "y"
+		- occupied-space: ((1, 1),), value0: "c", value1: "z"
+	result = try-move entities, (0, 0), east, of x, y
+		destroy-it-and-update modify x, value1, it ~~ y.value1
+	result is
+		- occupied-space: ((1, 0), (1, 1)), value0: "a", value1: "xyz"
+
+test
+	entity-a test-entity =
+		occupied-space: (0, 0), (1, 0)
+		value: "a"
+	moved-entity-a test-entity =
+		occupied-space: (0, 1), (1, 1)
+		value: "a"
+	entity-b test-entity =
+		occupied-space: (0, 1),
+		value: "b"
+	entity-c test-entity =
+		occupied-space: (1, 1), (2, 1)
+		value: "c"
+	entities test-entity grid-entities = entity-a, entity-b, entity-c
+	conflict (test-entity, test-entity) mut[] = ()
+	wont-move = try-move entities, (0, 0), north, of x, y
+		conflict ~= x, y
+		if y.value == "b" then destroy-it else dont-move
+	wont-move is ()
+	move-to::(test-entity, test-entity)[] conflict is
+		- moved-entity-a, entity-b
+		- moved-entity-a, entity-c
+
+	will-move = try-move entities, (0, 0), north, of conflicting
+		conflict ~= conflicting
+		destroy-it
+	will-move is moved-entity-a,
+	move-to::(test-entity, test-entity)[] conflict is
+		- moved-entity-a, entity-b
+		- moved-entity-a, entity-c
+
+	will-move2 = try-move entities, (0, 0), east, {throw unreachable}
+	will-move2 is
+		- occupied-space: ((1, 0), (2, 0)), value: "a"
+		- entity-b
+		- entity-c
+
+	conflict-pairs (test-entity, test-entity) mut[] = ()
+	wont-move-simultaneously = try-move-simultaneously entities, ((0, 0), (0, 1)), north, of conflicting
+		conflict-pairs ~= conflicting
+		dont-move
+	wont-move-simultaneously is ()
+	move-to::(test-entity, test-entity)[] conflict-pairs is (entity-a, entity-c),
+
+	moved-simultaneously = try-move-simultaneously entities, ((0, 1), (1, 1)), east, {throw unreachable}
+	moved-simultaneously is
+		- entity-a
+		- occupied-space: ((1, 1),), value: "b"
+		- occupied-space: ((2, 1), (3, 1)), value: "c"

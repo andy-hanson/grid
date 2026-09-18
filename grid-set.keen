@@ -1,0 +1,371 @@
+import
+	keen/bits
+	keen/parse
+	./geometry
+	./bounded-grid
+	./mut-bounded-grid
+	./mut-grid-set
+
++virtual-grid-set union(grid-pos, grid-rect, grid-set, grid-set-union, grid-set-intersection, grid-set-difference)
+	to grid-set()
+	to json()
++to virtual-grid-set(_ json)
+	throw todo
++new virtual-grid-set() = ()::grid-rect
+
++subscript bool(a virtual-grid-set, pos grid-pos)
+	match a
+	as grid-pos
+		pos == a
+	as grid-rect
+		a[pos]
+	as grid-set
+		a[pos]
+	as grid-set-union
+		a.a[pos] or a.b[pos]
+	as grid-set-intersection
+		a.a[pos] and a.b[pos]
+	as grid-set-difference
+		a.a[pos] and not a.b[pos]
+
+| This definitely contains the real bounds. It may not be as tight as possible.
++approximate-bounds grid-rect(a virtual-grid-set)
+	match a
+	as grid-pos
+		square1 a
+	as grid-rect
+		a
+	as grid-set
+		a.bounds
+	as grid-set-union
+		a.a.approximate-bounds | a.b.approximate-bounds
+	as grid-set-intersection
+		a.a.approximate-bounds & a.b.approximate-bounds
+	as grid-set-difference
+		a.a.approximate-bounds
+
++ | grid-set-union(a virtual-grid-set, b virtual-grid-set)
+	grid-set-union a, b
++grid-set-union record(a virtual-grid-set, b virtual-grid-set)
++to grid-set(a grid-set-union)
+	a.a.to | a.b.to
+
++ & virtual-grid-set(a virtual-grid-set, b virtual-grid-set)
+	grid-set-intersection a, b
++grid-set-intersection record(a virtual-grid-set, b virtual-grid-set)
++to grid-set(a grid-set-intersection)
+	a.a.to & a.b.to
+
++ - virtual-grid-set(a virtual-grid-set, b virtual-grid-set)
+	grid-set-difference a, b
++grid-set-difference record(a virtual-grid-set, b virtual-grid-set)
++to grid-set(a grid-set-difference)
+	a.a.to - a.b.to
+
+| Set of {grid-pos}
++grid-set record
+	bounds grid-rect
+	-bits nat32[]
+	-size_ nat32
++ == bool(a grid-set, b grid-set)
+	trusted a.bounds == b.bounds and a.bits == b.bits
++ <=> comparison(a grid-set, b grid-set)
+	do trusted
+	res = a.bounds <=> b.bounds
+	if res == equal
+		a.bits <=> b.bits
+	else
+		res
++ hash void(a grid-set, state hash-state)
+	do trusted
+	hash a.bounds, state
+	hash a.bits, state
++to json(a grid-set)
+	if any a
+		show a
++to grid-set(a json)
+	unless null a
+		parse grid-set, to::string a
++list-new grid-set(positions grid-pos[]) = to positions
++to grid-set(pos grid-pos) = pos,
++to grid-set(a grid-rect)
+	a.to::mut-grid-set.to
++to grid-set(a grid-set) = a
++to grid-set(positions grid-pos[])
+	move-to to::mut-grid-set positions
++to mut-grid-set(a grid-set)
+	bounds_: a.bounds
+	bits: a.bits.to
+	size-and-locked: a.size_
++to grid-set(a mut-grid-set) = move-to copy a
++move-to grid-set(a mut-grid-set)
+	shrink-to-actual a
+	res grid-set = bounds: a.bounds, bits: (trusted cast-immutable a.bits), size_: a.size-and-locked
+	clear a
+	res
++to bool bounded-grid(a grid-set)
+	make a.bounds, a[it]
++to grid-set(a bool bounded-grid)
+	make a.bounds, a[it]
++show string(a grid-set)
+	show to::(bool bounded-grid) a
++grid-set grid-set grammar()
+	parse: of iter
+		bounds = parse grid-rect, iter
+		res mut-grid-set = empty bounds
+		parse-grid-like bounds, iter, of pos, char
+			char is "•" else inner-parse-error "•"
+			res ~= pos
+		move-to res
+
++any bool(a grid-set)
+	a.size != 0
++size nat32(a grid-set)
+	a.size_
+
++positions-where[t] grid-set(a t bounded-grid, f bool mut(pos grid-pos, x t))
+	make a.bounds, {f[it, a[it]]}
++positions-where[t] grid-set(a t mut-bounded-grid, f bool mut(pos grid-pos, x t))
+	make a.bounds, {f[it, a[it]]}
++update-all[t] t bounded-grid(a t bounded-grid, set grid-set, value t)
+	res t mut-bounded-grid = to a
+	for pos in set
+		res[pos] := value
+	move-to res
+
++make grid-set(bounds grid-rect, f bool mut(x grid-pos))
+	res mut-grid-set = empty bounds
+	for pos in all-positions bounds
+		if f[pos]
+			res[pos] := true
+	move-to res
+
++subscript bool(a grid-set, pos grid-pos)
+	do if word-index, bit-index = grid-set-indices a.bounds, pos
+	has-bit a.bits[word-index], bit-index
+
++to grid-pos[](a grid-set) = map a, {it}
+
++contains-all bool(a grid-set, b grid-set)
+	every b, a[it]
++contains-all bool(a grid-rect, b grid-set)
+	contains a, b.bounds and every b, a[it]
++overlaps bool(a virtual-grid-set, b virtual-grid-set)
+	do if overlaps a.approximate-bounds, b.approximate-bounds
+	a-set = a.to::grid-set
+	match b
+	as grid-set
+		if a-set.size < b.size
+			some a-set, b[it]
+		else
+			some b, a[it]
+	else
+		some a-set, b[it]
++overlaps bool(a virtual-grid-set, b mut-grid-set)
+	overlaps b, a
++overlaps bool(a mut-grid-set, b virtual-grid-set)
+	do if overlaps a.bounds, b.approximate-bounds
+	match b
+	as grid-set
+		if a.size < b.size
+			some a, b[it]
+		else
+			some b, a[it]
+	else
+		some a, b[it]
+
++ & grid-set(a grid-set, b virtual-grid-set)
+	match b
+	as grid-set
+		if contains-all a, b
+			b
+		elif contains-all b, a
+			a
+		else
+			res mut-grid-set = empty (a.bounds | b.bounds)
+			for x in a
+				if b[x]
+					res ~= x
+			move-to res
+	else
+		a & b.to::grid-set
++ union_[col] grid-set(values col) (col, grid-set) some
+	union_ values, {it}
++ union_[col, elem] grid-set(values col, f grid-set mut(value elem)) (col, elem) some
+	fold (), values, of x, y then x | f[y]
++ | grid-set(a grid-set, b grid-set)
+	if contains-all a, b
+		a
+	elif contains-all b, a
+		b
+	else
+		res mut-grid-set = empty (a.bounds | b.bounds)
+		for x in a then res ~= x
+		for x in b then res ~= x
+		move-to res
++ | grid-set(a grid-set, pos grid-pos)
+	if a[pos]
+		a
+	elif word-index, bit-index = grid-set-indices a.bounds, pos
+		bounds: a.bounds
+		bits: set a.bits, word-index.nth, add-bit a.bits[word-index], bit-index
+		size_: a.size_ + 1
+	else
+		forbid a.bounds[pos]
+		res = empty (a.bounds | pos)
+		for pos2 in a
+			res[pos2] := true
+		res[pos] := true
+		move-to res
++ | grid-set(a grid-pos, b grid-set)
+	b | a
++ - grid-set(a grid-set, b grid-set)
+	if overlaps a, b
+		unless contains-all b, a
+			filter a, {not b[it]}
+	else
+		a
++ - grid-set(a grid-set, pos grid-pos)
+	if a[pos]
+		assert word-index, bit-index = grid-set-indices a.bounds, pos
+		res grid-set =
+			bounds: a.bounds
+			bits: set a.bits, word-index.nth, remove-bit a.bits[word-index], bit-index
+			size_: a.size_ - 1
+		if is-on-edge a.bounds, pos
+			bounds = actual-bounds res
+			if bounds == a.bounds
+				res
+			else
+				make bounds, res[it]
+		else
+			res
+	else
+		a
++ - grid-set(a grid-set, b grid-rect)
+	if overlaps a, b
+		unless contains-all b, a
+			filter a, {not b[it]}
+	else
+		a
++ without-index grid-set(a grid-set, index nat32)
+	assert index < a.size_ else index-too-big index, a.size
+	a - a[index]
+-actual-bounds grid-rect(a grid-set)
+	fold (), a, of x, y then x | y
+
++ & grid-set(a grid-set, bounds partial-bounds)
+	a
+	then unless bounds == () then filter bounds[it]
+
++some bool(a grid-set, f bool mut(pos grid-pos))
+	some a.bits.with-index, of word-index, word
+		some word.one-bits, of bit-index
+			f[pos-of-grid-set-indices a.bounds, (word-index, bit-index)]
+
+| Returns a result if the position is the nth position in iteration order in the set.
++index-of-pos nat32?(a grid-set, pos grid-pos)
+	do if word-index, bit-index = grid-set-indices a.bounds, pos
+	word = a.bits[word-index]
+	do if has-bit word, bit-index
+	res mut nat32 = 0
+	for i in 0 .. word-index
+		res wrap-add:= count-ones a.bits[i]
+	res 'wrap-add count-ones-before word, bit-index
+
+| Finds the nth position in iteration order
++subscript grid-pos(a grid-set, index nat32)
+	assert index < a.size else index-too-big index, a.size
+	word-index, bit-index = nth-one-bit! a.bits, index
+	assert has-bit a.bits[word-index], bit-index
+	pos-of-grid-set-indices a.bounds, (word-index, bit-index)
+
++ + grid-set(a grid-set, displacement grid-displacement)
+	bounds: a.bounds + displacement
+	bits: a.bits
+	size_: a.size_
++ + grid-set(a grid-set, dir dir4)
+	a + dir.to::grid-displacement
++ - grid-set(a grid-set, displacement grid-displacement)
+	a + -displacement
++ - grid-set(a grid-set, dir dir4)
+	a - dir.to::grid-displacement
+
+| Adds the neighbors of each point to the set
++expand grid-set(a grid-set)
+	res mut-grid-set = a.to
+	for pos in a
+		for n in neighbors4 pos
+			res ~= n
+	move-to res
+
+| All positions neighboring any position in {a} (but excludes points in {a})
++neighbors-set grid-set(a grid-set)
+	a.expand - a
+
++neighbors-set grid-set(a grid-pos)
+	map a.neighbors4, {it}
+
+| Collection of neighbors of {center} that are in {within-set}.
++neighbors-in record(within-set grid-set, center grid-pos)
++size nat32(a neighbors-in)
+	count a, {true}
++some bool(a neighbors-in, f bool mut(x grid-pos))
+	some a.center.neighbors4, of pos
+		a.within-set[pos] and f[pos]
+
+| Finds positions in {source} that are next to {neighboring}
++filter-that-neighbor grid-set(source grid-set, neighboring virtual-grid-set)
+	diff = neighboring - source
+	filter source, {is-next-to it, diff}
+
++is-next-to bool(pos grid-pos, set virtual-grid-set)
+	some pos.neighbors4, set[it]
+
++is-next-to bool(a grid-set, b grid-rect)
+	overlaps a, expand b, 1
+
++is-next-to bool(a grid-set, b grid-set)
+	some a, {is-next-to it, b}
+
+| Returns all points in {a} where walking in {dir} would take you outside the set.
+| So, 'boundary a, west' would give the west edge of 'a'.
++inner-boundary grid-pos[](a grid-set, dir dir4)
+	filter a, {not a[it + dir]}
+| Returns all points that are just beyond the set in the direction.
++outer-boundary grid-pos[](a grid-set, dir dir4)
+	map (inner-boundary a, dir), it + dir
+
++any-overlaps bool(sets grid-set[])
+	some sets.all-pairs, of x, y then overlaps x, y
+
++grid-set-diff record
+	removed grid-set
+	added grid-set
++any bool(a grid-set-diff)
+	any a.removed or any a.added
++diff grid-set-diff(a grid-set, b grid-set)
+	removed: a - b
+	added: b - a
+
+| Rotate about the origin
++rotate grid-set(a grid-set, rotation relative-dir4)
+	if rotation == forward
+		a
+	else
+		for pos in a
+			rotate pos, rotation
+
++flip-horizontally grid-set(a grid-set)
+	for pos in a
+		flip-horizontally pos
+
+| All positions with more than 2 neighbors (meaning a '╋' or '┳' shape)
++intersections grid-set(a grid-set)
+	filter a, of pos
+		(count pos.neighbors4, a[it]) > 2
+
++occupied-space[t] spec t data
+	occupied-space grid-set(a t)
++update-occupied-space[t] spec
+	occupied-space (t, grid-set) lens()

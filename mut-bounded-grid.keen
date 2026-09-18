@@ -1,0 +1,82 @@
+import
+	./geometry
+
++mut-bounded-grid[t] record mut
+	~bounds_ mut grid-rect
+	~values mut t buffer
++new[t] t mut-bounded-grid() = (), ()
++to[t] json(a t mut-bounded-grid) t to-json
+	for::json[] pos, value in a
+		pos.to, value.to
++to[t] t mut-bounded-grid(_ json) t from-json
+	throw todo
++bounds[t] grid-rect(a t mut-bounded-grid) = a.bounds_
++width[t] nat16(a t mut-bounded-grid) = a.bounds.width
++height[t] nat16(a t mut-bounded-grid) = a.bounds.height
++size[t] nat(a t mut-bounded-grid)
+	a.values.size
++make[t] t mut-bounded-grid(bounds grid-rect) t new
+	make bounds, {}
++make[t] t mut-bounded-grid(bounds grid-rect, f t mut(pos grid-pos))
+	bounds_: bounds
+	values: for index in 0 .. bounds.area
+		x = index % bounds.width
+		y = index / bounds.width
+		f[bounds.left + x.to, bounds.bottom + y.to]
++copy[t] t mut-bounded-grid(a t mut-bounded-grid)
+	bounds_: a.bounds
+	values: copy a.values
++swap[t] void(a t mut-bounded-grid, b t mut-bounded-grid)
+	a-bounds = a.bounds_
+	a-values = a.values
+	a.bounds_ := b.bounds_
+	a.values := b.values
+	b.bounds_ := a-bounds
+	b.values := a-values
+| May throw {pos-out-of-bounds}
++subscript[t] t(a t mut-bounded-grid, pos grid-pos)
+	assert index = index-for-pos a.bounds, pos else pos-out-of-bounds pos, a.bounds
+	a.values[index]
++pos-out-of-bounds record(pos grid-pos, bounds grid-rect) exception case
++show string(a pos-out-of-bounds)
+	"Looked up position {a.pos}, but bounds are {a.bounds}"
++set-subscript[t] void(a t mut-bounded-grid, pos grid-pos, value t)
+	assert a.bounds[pos]
+	a.values[index-for-pos! a.bounds, pos] := value
++some[t] bool(a t mut-bounded-grid, f bool mut(pos grid-pos, value t))
+	some a.bounds.all-positions, {f[it, a[it]]}
+| Minimum grid-rect containing every position for which {f} is true
++bounds-of[t] grid-rect(a t mut-bounded-grid, f bool mut(x t))
+	fold (), a, of res, (pos, value)
+		if f[value] then res | pos else res
++shrink-to[t] void(a t mut-bounded-grid, bounds grid-rect)
+	assert contains a.bounds_, bounds
+	res t mut-bounded-grid = make bounds, a[it]
+	swap a, res
++shrink-to-where[t] void(a t mut-bounded-grid, f bool mut(x t))
+	shrink-to a, bounds-of a, f
++change-bounds[t] void(a t mut-bounded-grid, bounds grid-rect, default t mut(pos grid-pos))
+	do unless bounds == a.bounds
+	swap a, make bounds, of pos
+		if a.bounds[pos] then a[pos] else default[pos]
+
++mut-bounded-grid-rows[t] record mut
+	-inner t mut-bounded-grid
++rows[t] t mut-bounded-grid-rows(a t mut-bounded-grid) = a,
++size[t] nat32(a t mut-bounded-grid-rows) = a.inner.height
++some[t] bool(a t mut-bounded-grid-rows, f bool mut(x t buffer-view))
+	some 0::nat16 .. a.inner.height, of y
+		f[row a.inner, y]
++some-reverse[t] bool(a t mut-bounded-grid-rows, f bool mut(x t buffer-view))
+	some-reverse 0::nat16 .. a.inner.height, of y
+		f[row a.inner, y]
+
++row[t] t buffer-view(a t mut-bounded-grid, y nat16)
+	assert y < a.height else index-too-big y, a.height
+	begin = y * a.width
+	a.values[begin .. begin + a.width]
+
+index-for-pos nat32?(bounds grid-rect, pos grid-pos)
+	do if bounds[pos]
+	rel = pos - bounds.bottom-left
+	rel.y.to * bounds.width + rel.x.to

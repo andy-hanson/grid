@@ -1,0 +1,82 @@
+import
+	./geometry
+	./mut-grid-set
+	./grid-set
+
++mut-sparse-grid[t] record mut
+	~keys mut-grid-set
+	| Same size as {keys}
+	~values t mut[]
+	~is-write-locked mut bool
+
++list-new[t] t mut-sparse-grid(pairs (grid-pos, t)[])
+	# grid-set iteration is sorted by y first
+	sorted = sort-unique pairs, it.a.transpose
+	keys: map sorted, it.a
+	values: map sorted, it.b
+	is-write-locked: false
++make[t] t mut-sparse-grid(bounds grid-rect, f t? mut(pos grid-pos))
+	res t mut-sparse-grid = ()
+	for pos in all-positions bounds
+		if x = f[pos]
+			res[pos] := x
+	res
++make[t] t mut-sparse-grid(where grid-set, f t? mut(pos grid-pos))
+	res t mut-sparse-grid = ()
+	for pos in where
+		if x = f[pos]
+			res[pos] := x
+	res
++copy[t] t mut-sparse-grid(a t mut-sparse-grid)
+	keys: a.keys.copy
+	values: a.values.copy
+	is-write-locked: false
++to[t] (grid-pos, t)[](a t mut-sparse-grid)
+	map a, {it}
++any[t] bool(a t mut-sparse-grid)
+	any a.values
++size[t] nat32(a t mut-sparse-grid)
+	size a.values
++clear[t] void(a t mut-sparse-grid)
+	forbid is-write-locked a else was-locked
+	clear a.keys
+	clear a.values
++set-subscript[t] void(a t mut-sparse-grid, pos grid-pos, value t?)
+	forbid is-write-locked a else was-locked
+	if value
+		if index = index-of-pos a.keys, pos
+			a.values[index] := value
+		else
+			a.keys ~= pos
+			insert-at a.values, (index-of-pos! a.keys, pos), value
+	else
+		a -= pos
++subscript[t] t?(a t mut-sparse-grid, pos grid-pos)
+	if index = index-of-pos a.keys, pos
+		a.values[index]
+
++ -=[t] void(a t mut-sparse-grid, pos grid-pos)
+	forbid is-write-locked a else was-locked
+	do if index = index-of-pos a.keys, pos
+	a.keys -= pos
+	_ = remove-at a.values, index
++ -=[t] void(a t mut-sparse-grid, set grid-set)
+	for pos in set
+		a -= pos
+
++map-values=[t] void(a t mut-sparse-grid, f t mut(x t))
+	a.values map= f
+
++ensure[t] t(a t mut-sparse-grid, pos grid-pos) t new
+	ensure a, pos, {}
++ensure[t] t(a t mut-sparse-grid, pos grid-pos, get-value t mut())
+	a[pos] else
+		res = get-value[]
+		a[pos] := res
+		res
+
++some[t] bool(a t mut-sparse-grid, f bool mut(pos grid-pos, value t))
+	a.is-write-locked := true
+	finally a.is-write-locked := false
+	some a.keys.with-index, of index, pos
+		f[pos, a.values[index]]

@@ -1,0 +1,50 @@
+import
+	../geometry
+	../grid-set
+	../mut-grid-set
+
+test
+	a mut-grid-set = ()
+	a ~= 1, 2
+	bounds a is square1 (1, 2)
+	any a is true
+	size a is 1
+	a[1, 2] is true
+	a[2, 1] is false
+
+	clear a
+	any a is false
+	a.size is 0
+
+test
+	a mut-grid-set = empty bottom-left: (0, 0), top-right: (10, 10)
+	a ~= 2, 3
+	a ~= 6, 5
+	bounds a is bottom-left: (0, 0), top-right: (10, 10)
+	shrink-to-actual a
+	bounds a is bottom-left: (2, 3), top-right: (7, 6)
+	to::grid-pos[] a is (2, 3), (6, 5)
+
+# We optimize 'to mut-grid-set(a grid-rect)' by filling with 1s, but need to make sure it's exactly equal.
+test
+	bounds grid-rect = bottom-left: (0, 0), top-right: (2, 2)
+	a mut-grid-set = to bounds
+	to::grid-set a is
+		- 0, 0
+		- 1, 0
+		- 0, 1
+		- 1, 1
+	b mut-grid-set = empty bounds
+	for point in all-positions bounds
+		b[point] := true
+	move-to::grid-set a is move-to::grid-set b
+
+test
+	a mut-grid-set = ()
+	a ~= 1, 2
+	try
+		for _ in a
+			a ~= 3, 4
+		should-throw
+	catch as was-locked
+		()

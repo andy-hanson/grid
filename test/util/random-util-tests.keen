@@ -1,0 +1,51 @@
+import
+	keen/parse
+	keen/random/random
+	keen/random/sfc
+	../../geometry
+	../../grid-set
+	../../util/random-util
+
+test
+	the random = sfc32 7
+	show choose-different-random-positions-in set, 3 is	quote
+		1, 3 to 5, 5
+		   •
+		••
+
+test
+	the random = sfc32 7
+	# It can't place a 5th
+	show random-positions-with-min-distance set, 3, 4 is quote
+		0, 0 to 5, 5
+		•   •
+
+
+
+		   •
+
+test
+	the random = sfc32 7
+	# It can't place a 5th
+	show random-positions-with-min-distance set, 5, 3 is quote
+		0, 0 to 5, 5
+		    •
+		 •
+
+
+		•  •
+
+-set grid-set()
+	parse grid-set, quote
+		0, 0 to 5, 5
+		•• ••
+		 •••
+		  •
+		 •••
+		•• ••
+
+test
+	the random = sfc32 7
+	choose-distant-random-positions-in set, 3 is (3, 0), (2, 2), (4, 4)
+	choose-distant-random-positions-in set, 3 is (3, 1), (1, 4), (3, 4)
+	choose-distant-random-positions-in set, 99 is set

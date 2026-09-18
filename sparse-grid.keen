@@ -1,0 +1,145 @@
+import
+	./bounded-grid
+	./geometry
+	./grid-set
+	./mut-grid-set
+	./mut-sparse-grid
+
+| Grid with 0 or 1 values at each position.
++sparse-grid[t] record -new
+	keys grid-set
+	| Same size as {keys}
+	values t[]
++list-new[t] t sparse-grid(pairs (grid-pos, t)[])
+	pairs.to
++ ==[t] bool(a t sparse-grid, b t sparse-grid) t equal
+	trusted a.keys == b.keys and a.values == b.values
++ <=>[t] comparison(a t sparse-grid, b t sparse-grid) t compare
+	trusted match a.keys <=> b.keys
+	as less then less
+	as equal then a.values <=> b.values
+	as greater then greater
++to[t] json(a t sparse-grid) t to-json
+	to to::(grid-pos, t)[] a
++to[t] t sparse-grid(a json) t from-json
+	to to::(grid-pos, t)[] a
++make[t] t sparse-grid(bounds grid-rect, f t? mut(pos grid-pos))
+	move-to make::(t mut-sparse-grid) bounds, f
++make[t] t sparse-grid(where grid-set, f t? mut(pos grid-pos))
+	move-to make::(t mut-sparse-grid) where, f
++to[t] (grid-pos, t)[](a t sparse-grid)
+	map a, {it}
++to[t] t sparse-grid(pairs (grid-pos, t)[])
+	# grid-set iteration is sorted by y first
+	sorted = sort-unique pairs, it.a.transpose
+	keys: map sorted, it.a
+	values: map sorted, it.b
++to[t] t? bounded-grid(a t sparse-grid)
+	make a.bounds, a[it]
++to[t] t sparse-grid(a t? bounded-grid)
+	make a.bounds, a[it]
++move-to[t] t sparse-grid(a t mut-sparse-grid)
+	keys: move-to a.keys
+	values: move-to a.values
++to[t] t mut-sparse-grid(a t sparse-grid)
+	keys: a.keys.to
+	values: a.values.to
+	is-write-locked: false
++any[t] bool(a t sparse-grid) = any a.values
++size[t] nat32(a t sparse-grid) = a.values.size
++bounds[t] grid-rect(a t sparse-grid) = a.keys.bounds
++subscript[t] t?(a t sparse-grid, pos grid-pos)
+	if index = index-of-pos a.keys, pos
+		a.values[index]
+| Overwrites any value at that position (if any)
++ ~[t] t sparse-grid(a t sparse-grid, (pos grid-pos, value t))
+	if index = index-of-pos a.keys, pos
+		keys: a.keys
+		values: set a.values, index.nth, value
+	else
+		keys = a.keys | pos
+		keys: keys
+		values: insert-at a.values, (index-of-pos! keys, pos), value
+| Values in {b} overwrite those in {a}
++ ~~[t] t sparse-grid(a t sparse-grid, b t sparse-grid)
+	fold a, b, of x, y then x ~ y
++ -[t] t sparse-grid(a t sparse-grid, positions grid-pos[])
+	fold a, positions, of x, pos then x - pos
++ -[t] t sparse-grid(a t sparse-grid, pos grid-pos)
+	if index = index-of-pos a.keys, pos
+		keys: a.keys - pos
+		values: remove-at a.values, index
+	else
+		a
+
++ +[t] t sparse-grid(a t sparse-grid, displacement grid-displacement)
+	a.keys + displacement, a.values
++ -[t] t sparse-grid(a t sparse-grid, displacement grid-displacement)
+	a.keys - displacement, a.values
+
++merge[t] t sparse-grid(a t sparse-grid, b t sparse-grid, f t mut(x t, y t))
+	fold a, b, of cur, (pos, y)
+		cur ~ (pos, if x = cur[pos] then f[x, y] else y)
+
++some[t] bool(a t sparse-grid, f bool mut(pos grid-pos, value t))
+	some a.keys.with-index, of index, pos
+		f[pos, a.values[index]]
+
+| Update values without moving them
++map-values[t] t sparse-grid(a t sparse-grid, f t mut(pos grid-pos, value t))
+	keys: a.keys
+	values: for pos, value in a
+		f[pos, value]
+
+| Update values without moving them, but possibly remove some
++filter-map-values[t] t sparse-grid(a t sparse-grid, f t? mut(pos grid-pos, value t))
+	keys mut-grid-set = a.keys.to
+	values t mut[] = ()
+	for pos, value in a
+		if new-value = f[pos, value]
+			values ~= new-value
+		else
+			keys -= pos
+	keys.size is values.size
+	keys: move-to keys
+	values: move-to values
+
+| Set of every position that has a value.
++set[t] grid-set(a t sparse-grid)
+	a.keys
+
++positions-where[t] grid-set(a t sparse-grid, f bool mut(pos grid-pos, value t))
+	for? pos, x in a
+		if f[pos, x]
+			pos
+
++remove-overlapping[t] t sparse-grid(a t sparse-grid, rect grid-rect)
+	do if overlaps a.bounds, rect else a
+	filter a, of pos, _
+		not rect[pos]
+
++in-bounds[t] record(grid t sparse-grid, rect grid-rect)
++set[t] grid-set(a t in-bounds)
+	do if overlaps a.grid.bounds, a.rect
+	filter a.rect.all-positions, a.grid[it]
++some[t] bool(a t in-bounds, f bool mut(x t))
+	do if overlaps a.grid.bounds, a.rect
+	some a.rect.all-positions, of pos
+		value = a.grid[pos]
+		value and f[value]
+
+| Rotate about origin
++rotate[t] t sparse-grid(a t sparse-grid, rotation relative-dir4)
+	if rotation == forward
+		a
+	else
+		for key, value in a
+			(rotate key, rotation), value
+
+| Mirror about Y=0
++flip-horizontally[t] t sparse-grid(a t sparse-grid)
+	for key, value in a
+		key.flip-horizontally, value
+
++show[t] string(a t sparse-grid) t show
+	show to::(t? bounded-grid) a

@@ -1,0 +1,25 @@
+import
+	../geometry
+	../grid-set
+	../mut-grid-entities
+
+-test-entity record
+	occupied-space grid-set
+	value string
+
+test
+	entity-a test-entity = occupied-space: ((0, 0),), value: "a"
+	entity-b test-entity = occupied-space: ((1, 0),), value: "b"
+	entity-c test-entity = occupied-space: ((2, 0),), value: "c"
+	a test-entity mut-grid-entities = entity-a, entity-b, entity-c
+	size a is 3
+	a[0, 0] is entity-a
+	a[1, 0] is entity-b
+	a[2, 0] is entity-c
+	a[0, 1] is ()
+
+	remove-entity a, 1
+	size a is 2
+	a[0, 0] is entity-a
+	a[1, 0] is ()
+	a[2, 0] is entity-c

@@ -1,0 +1,53 @@
+import
+	./geometry
+	./grid-set
+	./mut-grid-set
+
+| Set of non-overlapping mut-grid-sets
++mut-grid-set-set record mut
+	| Each set is non-empty and no set overlaps another
+	~sets mut-grid-set mut[]
+
++any bool(a mut-grid-set-set)
+	any a.sets
+
+| Number of sets, not number of tiles
++size nat16(a mut-grid-set-set) = a.sets.size.to
+
++list-new mut-grid-set-set(sets grid-set[])
+	for x, y in all-pairs sets
+		forbid overlaps x, y
+	sets: map sets, it.to
+
++subscript mut-grid-set(a mut-grid-set-set, index nat32)
+	a.sets[index]
+
++contains bool(a mut-grid-set-set, pos grid-pos)
+	which-set a, pos
+
++which-set nat16?(a mut-grid-set-set, pos grid-pos)
+	if res = find-index a.sets, it[pos]
+		to::nat16 res
+
++ ~= void(a mut-grid-set-set, set grid-set)
+	a.sets ~= set.to
+
+| Merge two sets (identified by their index)
++merge void(a mut-grid-set-set, set0 nat16, set1 nat16)
+	a.sets[set0] ~~= a.sets[set1]
+	_ = remove-at a.sets, set1
+
++adjacent-sets nat16[](a mut-grid-set-set, set nat16)
+	filter 0::nat16 .. a.size, of i
+		do unless i == set
+		do if is-adjacent a.sets[i], a.sets[set]
+		true
+
+| True if we can move the set in the direction without running into another set. Does not actually move anything.
++can-move bool(a mut-grid-set-set, set-index nat16, direction dir4, ground grid-set)
+	every (outer-boundary a.sets[set-index], direction), of pos
+		ground[pos] and not contains a, pos
+
+| WARN: Does not check if the move is allowed
++move void(a mut-grid-set-set, set-index nat16, direction dir4)
+	a.sets[set-index] += direction.to

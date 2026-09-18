@@ -1,0 +1,317 @@
+import
+	./geometry
+	./grid-set
+	./grid-set-set
+	./mut-grid-entities
+	./mut-grid-set
+	./mut-sparse-grid
+	./sparse-grid
+
+| Represents a bunch of entities in a grid, each of which may take up multiple spaces.
+| Entities will not overlap.
+| Each entity is expected to store its own {grid-set} and implement {occupied-space}.
++grid-entities[t] record
+	-entity-at-pos nat16 sparse-grid
+	-entities t[]
+
++ ==[t] bool(a t grid-entities, b t grid-entities) t equal
+	trusted a.entities == b.entities
++ <=>[t] comparison(a t grid-entities, b t grid-entities) t compare
+	trusted a.entities <=> b.entities
++ hash[t] void(a t grid-entities, state hash-state) t hash
+	trusted hash a.entities, state
++to[t] json(a t grid-entities) t to-json
+	a.entities.to
++to[t] t grid-entities(a json) t from-json, t occupied-space
+	to to::t[] a
++to[t] t mut-grid-entities(a t grid-entities)
+	entity-at-pos: a.entity-at-pos.to
+	entities: a.entities.to
+
++list-new[t] t grid-entities(entities t[]) t occupied-space
+	entities.to
++to[t] t grid-entities(entities t[]) t occupied-space
+	move-to to::(t mut-grid-entities) entities
++to[t] t[](a t grid-entities)
+	a.entities
++move-to[t] t grid-entities(a t mut-grid-entities) t occupied-space
+	entity-at-pos: move-to a.entity-at-pos
+	entities: move-to a.entities
++any[t] bool(a t grid-entities)
+	any a.entities
+| Number of entities, not number of grid spaces occupied
++size[t] nat16(a t grid-entities)
+	a.entities.size.to
++bounds[t] grid-rect(a t grid-entities)
+	a.entity-at-pos.bounds
+
++ ~[t] t grid-entities(a t grid-entities, value t) t occupied-space
+	forbid overlaps a, value.occupied-space
+	index nat16 = a.entities.size.to
+	entity-at-pos: a.entity-at-pos ~~ for pos in value.occupied-space
+		pos, index
+	entities: a.entities ~ value
+
++overlaps[t] bool(a t grid-entities, space grid-set)
+	some space, a[it]
+
++index-of-entity-at-pos[t] nat16?(a t grid-entities, pos grid-pos)
+	a.entity-at-pos[pos]
+
++subscript[t] t?(a t grid-entities, pos grid-pos)
+	a.entities?[a.entity-at-pos[pos]]
+
+| WARN: This will throw an exception if this moves on top of another entity. (Use {move-and-destroy} if you want that.)
++update-entity-at[t] t grid-entities(a t grid-entities, pos grid-pos, new-entity t) t occupied-space
+	assert index = a.entity-at-pos[pos]
+	old-entity = a.entities[index]
+	for new-pos in new-entity.occupied-space
+		there = a.entity-at-pos[new-pos]
+		assert not there or there == index
+	entity-at-pos: update-entity-at-pos a.entity-at-pos, index, old-entity.occupied-space, new-entity.occupied-space
+	entities: update-at a.entities, index, new-entity
+
++modify-entity-at[t] t grid-entities(a t grid-entities, pos grid-pos, f t mut(x t)) t occupied-space
+	assert entity = a[pos]
+	update-entity-at a, pos, f[entity]
+
++entity-at[t] (t grid-entities, t) lens(pos grid-pos) t occupied-space
+	get: it[pos]!
+	set: of a, value
+		update-entity-at a, pos, value
+
+| Update an entity, and destroy anything on a space that it now occupies.
+| (If it now occupies a single space of a large entity, that entire entity is destroyed.)
++move-and-destroy[t] t grid-entities(a t grid-entities, pos grid-pos, updated t) t occupied-space
+	assert index = a.entity-at-pos[pos]
+	old-entity = a.entities[index]
+	new-occupied-space = updated.occupied-space
+	diff = diff old-entity.occupied-space, new-occupied-space
+	to-remove nat16 set = for? new-pos in diff.added
+		a.entity-at-pos[new-pos]
+	res mut = a
+	for x in to-remove
+		res := remove-at-index res, x
+	update-entity-at res, pos, updated
+
++try-move[t] t grid-entities?
+	a t grid-entities
+	moved-pos grid-pos
+	dir dir4
+	on-conflict t conflict-resolution mut(x t, y t)
+do t occupied-space, t update-occupied-space
+	assert moved-index = a.entity-at-pos[moved-pos]
+	new-occupied-space = a.entities[moved-index].occupied-space + dir
+	new-entity = set a.entities[moved-index], occupied-space, new-occupied-space
+	try-move a, moved-pos, new-entity, on-conflict
+| {on-conflict} receives the moved entity (with its updated position) and the entity int conflicts with.
++try-move[t] t grid-entities?
+	a t grid-entities
+	moved-pos grid-pos
+	new t
+	on-conflict t conflict-resolution mut(x t, y t)
+do t occupied-space
+	assert moved-index = a.entity-at-pos[moved-pos]
+	final-entity mut = new
+	new-occupied-space = occupied-space new
+	to-remove nat16[] = sort-unique with out in build
+		for new-pos in new-occupied-space
+			if x = a.entity-at-pos[new-pos] and x != moved-index
+				out ~= x
+	do if every to-remove, of x
+		match resolution = on-conflict[final-entity, a.entities[x]]
+		as dont-move
+			false
+		as destroy-it
+			true
+		as destroy-it-and-update
+			resolution.updated.occupied-space is final-entity.occupied-space
+			final-entity := resolution.updated
+			true
+	entity-at-pos: with out in build a.entity-at-pos.size - to-remove.size
+		new-moved-index = adjust-index! moved-index, to-remove
+		for pos in new-occupied-space
+			out ~= pos, new-moved-index
+		for pos, e in a.entity-at-pos
+			if e != moved-index and index = adjust-index e, to-remove
+				out ~= pos, index
+	entities: with out in build a.entities.size - to-remove.size
+		for index, entity in with-index16 a.entities
+			unless contains to-remove, index
+				out ~= if index == moved-index
+					final-entity
+				else
+					entity
+
+| Returns an empty option if this is one of the removed indices.
+| Otherwise returns the new index.
+-adjust-index nat16?(old nat16, removed nat16[])
+	n = count-while removed, it < old
+	unless n < removed.size and removed[n] == old
+		old - (to n)
+
+| Moves all entities at the {moved-positions} in the same direction at the same time.
+| Empty option if {on-conflict} returned {dont-move} even once.
++try-move-simultaneously[t] t grid-entities?
+	a t grid-entities
+	moved-positions grid-pos[]
+	dir dir4
+	on-conflict t conflict-resolution mut(a t, b t)
+do t occupied-space, t update-occupied-space
+	moved-indices nat16[] = for pos in moved-positions
+		a.entity-at-pos[pos]!
+	assert are-unique moved-indices
+	to-remove-set nat16 mut-set = ()
+	ok = every moved-indices, of index
+		entity = a.entities[index]
+		new-occupied-space = entity.occupied-space + dir
+		every new-occupied-space, of new-pos
+			if entity-there = a.entity-at-pos[new-pos]
+				# The moved entities all move in the same direction, so assume they don't conflict with each other
+				if contains moved-indices, entity-there or to-remove-set[entity-there]
+					true
+				else
+					match on-conflict[entity, a.entities[entity-there]]
+					as dont-move
+						false
+					as destroy-it
+						to-remove-set ~= entity-there
+						true
+					as destroy-it-and-update
+						throw todo
+			else
+				true
+	do if ok
+	to-remove nat16[] = move-to to-remove-set
+	entity-at-pos: with out in build a.entity-at-pos.size - to-remove.size
+		for moved-index in moved-indices
+			new-moved-index = adjust-index! moved-index, to-remove
+			for pos in a.entities[moved-index].occupied-space + dir
+				out ~= pos, new-moved-index
+		for pos, e in a.entity-at-pos
+			if not contains moved-indices, e and index = adjust-index e, to-remove
+				out ~= pos, index
+	entities: with out in build a.entities.size - to-remove.size
+		for index, entity in with-index16 a.entities
+			unless contains to-remove, index
+				out ~= if contains moved-indices, index
+					modify a.entities[index], occupied-space, it + dir
+				else
+					entity
+
++remove-at-index[t] t grid-entities(a t grid-entities, index nat16) t occupied-space
+	entity-at-pos:
+		filter-map-values a.entity-at-pos, of _, j
+			match j <=> index
+			as less
+				j
+			as equal
+				()
+			as greater
+				j - 1
+	entities: remove-at a.entities, index
+
+-update-entity-at-pos nat16 sparse-grid(a nat16 sparse-grid, entity nat16, old-where grid-set, new-where grid-set)
+	assert any new-where
+	diff = diff old-where, new-where
+	do if any diff else a
+	res nat16 mut-sparse-grid = a.to
+	for pos in diff.removed
+		res -= pos
+	for pos in diff.added
+		res[pos] := entity
+	move-to res
+
+| Set of every poition that has an entity
++set[t] grid-set(a t grid-entities)
+	set a.entity-at-pos
++to-sets[t] grid-set-set(a t grid-entities) t occupied-space
+	map a.entities, it.occupied-space
++positions-where[t] grid-set(a t grid-entities, f bool mut(x t))
+	positions-where a.entity-at-pos, of _, index
+		f[a.entities[index]]
+
++union_[t] t grid-entities(parts t grid-entities[]) t occupied-space
+	fold (), parts, of x, y then x ~~ y
+| Throws an exception on collision
++ ~~[t] t grid-entities(a t grid-entities, b t grid-entities) t occupied-space
+	to a.entities ~~ b.entities
+
++some[t] bool(a t grid-entities, f bool mut(value t))
+	some a.entities, f
+
+| {f} should not change the {occupied-space} of entities. It can return an empty option to remove entities.
++update-without-moving[t] t grid-entities(a t grid-entities, f t? mut(x t)) t occupied-space
+	do with out in build
+	do for old in a.entities
+	do if nu = f[old]
+	nu.occupied-space is old.occupied-space
+	out ~= nu
+
++attempt-update-callbacks[t] interface mut
+	plan-update t?(x t)
+	| Return an empty option to not move anything.
+	| Otherwise, return an array corresponding to {conflicting}.
+	| Empty entries in the array indicate that the entity should be deleted.
+	| {old-entities} is available for reference and corresponds to {conflicting}.
+	on-conflict t?[]?(conflicting t[], old-entities t[])
+
+| In parallel, all entities plan an update and return a new update.
+| Then these updates are applied one at a time.
+| If an entity would collide with another, a callback is called.
+| WARN: Caller is responsible for ensuring that {on-conflict} actually resolves conflicts, or this will loop forever.
++attempt-updates[t] t grid-entities(a t grid-entities, callbacks t attempt-update-callbacks) t occupied-space
+	res t? buffer = map a.entities, {plan-update callbacks, it}
+	while
+		do if conflicting-pos =
+			used mut-grid-set = ()
+			first res, of x
+				if x
+					find x.occupied-space, {not try-add used, it}
+		conflicting nat[] = indices-where res, {it and it.occupied-space[conflicting-pos]}
+		if updated = on-conflict callbacks, (map conflicting, res[it]!), (map conflicting, a.entities[it])
+			updated.size is conflicting.size
+			for i, x in zip conflicting, updated
+				res[i] := x
+		else
+			# Revert to old
+			for i in conflicting
+				res[i] := a.entities[i]
+		true
+	map-optionally res, {it}
+
++conflict-resolution[t] union(dont-move, destroy-it, t destroy-it-and-update)
+| When A is trying to move onto B, don't move A
++dont-move record
+| When A is trying to move onto B, destroy B, allowing A to move
++destroy-it record
+| This can't update the occupied-space, only other properties
++destroy-it-and-update[t] record(updated t)
+
+| Remove the entire entity from the grid.
+| WARN: This assumes the entity is in the grid.
+| This just uses 'entity.occupied-space' and doesn't check the full entity value.
++ -[t] t grid-entities(a t grid-entities, entity t) t occupied-space
+	remove-entity-at a, entity.occupied-space[0]
+| Removes the entire entity at the position, including its entire occupied space
++remove-entity-at[t] t grid-entities(a t grid-entities, pos grid-pos) t occupied-space
+	assert removed = a.entity-at-pos[pos]
+	entity-at-pos: filter-map-values a.entity-at-pos, of _, index
+		match index <=> removed
+		as less
+			index
+		as equal
+			()
+		as greater
+			index - 1
+	entities: remove-at a.entities, removed
+
++remove-overlapping[t] t grid-entities(a t grid-entities, b virtual-grid-set) t occupied-space
+	remove-overlapping-where a, b, {true}
+
++remove-overlapping-where[t] t grid-entities(a t grid-entities, b virtual-grid-set, f bool mut (x t)) t occupied-space
+	new-entities t[] = omit a.entities, {overlaps it.occupied-space, b and f[it]}
+	if new-entities.size == a.entities.size
+		a
+	else
+		to new-entities

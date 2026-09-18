@@ -1,0 +1,8 @@
+import
+	../bounded-grid
+
+test
+	a string bounded-grid = ()
+	any a is false
+	size a is 0
+	show a is "empty"

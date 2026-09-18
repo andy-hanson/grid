@@ -1,0 +1,193 @@
+import
+	keen/math/geom2d/circle
+	keen/math/vec
+	keen/parse
+	../../util/more-geometry
+	../../geometry
+	../../grid-set
+
+test
+	a = parse grid-set, quote
+		0, 0 to 3, 3
+		• •
+
+		  •
+	furthest-from a, (0, 0) is 2, 2
+	b = parse grid-set, quote
+		0, 0 to 3, 3
+		 •
+		 •
+		•
+	furthest-from a, b is 2, 0
+	furthest-from b, a is 0, 0
+	distance-squared a, b is 1
+
+test
+	positions-inside center: (2, 3), radius: 2.5 is
+		- 1, 1
+		- 2, 1
+		- 3, 1
+		- 0, 2
+		- 1, 2
+		- 2, 2
+		- 3, 2
+		- 4, 2
+		- 0, 3
+		- 1, 3
+		- 2, 3
+		- 3, 3
+		- 4, 3
+		- 0, 4
+		- 1, 4
+		- 2, 4
+		- 3, 4
+		- 4, 4
+		- 1, 5
+		- 2, 5
+		- 3, 5
+
+test
+	grid = parse grid-set, quote
+		0, 0 to 3, 3
+		  •
+		 •
+		•
+	nearest-to grid, (0, 0) is 0, 0
+	nearest-to grid, (0, 1) is 0, 0
+	nearest-to grid, (1, 0) is 0, 0
+	nearest-to grid, (2, 0) is 1, 1
+	nearest-to grid, (3, 0) is 1, 1
+	nearest-to grid, (4, 0) is 2, 2
+	distance-to-nearest grid, (0, 0) is 0
+	distance-to-nearest grid, (0, 1) is 1
+	distance-to-nearest (), (0, 0) is infinity
+
+test
+	a = parse grid-set,  quote
+		0, 0 to 4, 4
+		••••
+		• ••
+		••••
+		••••
+	nearest-outside a, (0, 0) is 0, -1
+	nearest-outside a, (1, 1) is 1, 2
+	nearest-outside a, (1, 2) is 1, 2
+	nearest-outside a, (2, 1) is 1, 2
+	nearest-outside a, (3, 1) is 4, 1
+
+test
+	a ray4 = (3, 4), east
+	a[103, 4] is true
+	a[3, 5] is false
+
+	segment ray4-segment = a, 3
+	segment[5, 4] is true
+	segment[6, 4] is false
+	size segment is 3
+	map::grid-pos[] segment, {it} is (3, 4), (4, 4), (5, 4)
+
+	reaches segment, (5, 4), () is 2
+	reaches segment, (6, 4), () is ()
+	reaches segment, (5, 4), ((4, 4), (4, 5))::grid-set is ()
+
+	tail segment is ray4-segment (4, 4), east, 2
+	tail tail segment is ray4-segment (5, 4), east, 1
+	tail tail tail segment is ray4-segment (6, 4), east, 0
+	tail tail tail tail segment is ray4-segment (6, 4), east, 0
+
+test
+	ray ray4 = (3, 4), east
+	set grid-set = (3, 4), (4, 4), (5, 4)
+	segment-within ray, set is ray, 3
+
+test
+	a grid-pos = (2, 3)
+	b grid-pos = (-3, -2)
+	to::grid-pos[] line-inclusive a, b is (2, 3), (1, 2), (0, 1), (-1, 0), (-2, -1), (-3, -2)
+
+test
+	line-to = of::grid-pos[] x grid-pos
+		to line-of-sight-exclusive (0, 0), x
+	line-to[0, 0] is ()
+	line-to[1, 0] is ()
+	line-to[2, 0] is (1, 0),
+	line-to[1, 1] is (0, 1), (1, 0)
+	line-to[2, 1] is (1, 0), (1, 1)
+	line-to[2, 2] is (0, 1), (1, 0), (1, 1), (1, 2), (2, 1)
+	line-to[1, 2] is (0, 1), (1, 1)
+	line-to[0, 2] is (0, 1),
+	line-to[-2, 3] is (0, 1), (-1, 1), (-1, 2), (-2, 2)
+	line-to[-4, -2] is (-1, 0), (-1, -1), (-2, -1), (-3, -1), (-3, -2)
+	line-to[5, -2] is (1, 0), (1, -1), (2, -1), (3, -1), (4, -1), (4, -2)
+
+test
+	set = parse grid-set, quote
+		0, 0 to 5, 5
+		• • •
+
+		•
+
+		•
+	convex-hull set is (0, 0), (0, 4), (4, 4)
+
+test
+	set = parse grid-set, quote
+		0, 0 to 5, 5
+		 •
+		 •  •
+		•  •
+		• • •
+		•
+	convex-hull set is (0, 0), (0, 2), (1, 4), (4, 3), (4, 1)
+
+test
+	points = parse grid-set, quote
+		0, 0 to 5, 5
+		  •
+		 • •
+		•  •
+		 ••
+		•  ••
+	show fill-in-holes points is quote
+		0, 0 to 5, 5
+		  •
+		 •••
+		••••
+		 ••
+		•  ••
+
+test
+	points grid-set = (0, 0), (5, 0), (1, 1), (0, 5)
+	show filled-in-convex-hull points is quote
+		0, 0 to 6, 6
+		•
+		••
+		•••
+		••••
+		•••••
+		••••••
+
+test
+	a = parse grid-set, quote
+		0, 0 to 4, 4
+		 •
+		•••
+		  ••
+		  •
+	intersections a is (1, 2), (2, 1)
+
+test
+	a = parse grid-set, quote
+		0, 0 to 5, 5
+		••••
+		•• •
+		 •••
+		•• •
+		• •••
+	show intersections a is quote
+		1, 0 to 4, 5
+		•
+		•
+		• •
+
+		  •

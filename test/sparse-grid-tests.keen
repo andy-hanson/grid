@@ -1,0 +1,41 @@
+import
+	../geometry
+	../grid-set
+	../sparse-grid
+
+test
+	a nat8 sparse-grid =
+		- (0, 0), 1
+		- (2, 2), 2
+	b nat8 sparse-grid =
+		- (0, 2), 3
+		- (2, 2), 4
+	merge a, b, (of x, y then x + y) is
+		- (0, 0), 1
+		- (0, 2), 3
+		- (2, 2), 6
+
+test
+	a string sparse-grid =
+		- (0, 0), "a"
+		- (2, 0), "b"
+		- (2, -1), "c"
+		- (1, 0), "d"
+	a.to::(grid-pos, string)[] is
+		- (2, -1), "c"
+		- (0, 0), "a"
+		- (1, 0), "d"
+		- (2, 0), "b"
+
+
+test
+	a string sparse-grid =
+		- (0, 0), "a"
+		- (1, 0), "b"
+		- (0, 1), "c"
+	remove-overlapping a, bottom-left: (1, 0), top-right: (2, 1) is
+		- (0, 0), "a"
+		- (0, 1), "c"
+	set in-bounds a, bottom-left: (0, 0), top-right: (1, 2) is
+		- 0, 0
+		- 0, 1

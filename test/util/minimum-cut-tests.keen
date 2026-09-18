@@ -1,0 +1,66 @@
+
+import
+	../../geometry
+	../../grid-set
+	../../util/minimum-cut
+	keen/parse
+
+test
+	assert-no-cut-possible ((0, 0),), (0, 0), (0, 0)
+	assert-no-cut-possible ((0, 0), (1, 0)), (0, 0), (1, 0)
+	assert-no-cut-possible ((0, 0), (1, 0), (2, 0)), (0, 0), (2, 0), ((3, 3),)
+
+-assert-no-cut-possible void(set grid-set, from grid-pos, to grid-pos)
+	assert-no-cut-possible set, from, to, set
+-assert-no-cut-possible void(set grid-set, from grid-pos, to grid-pos, cuttable grid-set)
+	try
+		_ = minimum-vertex-cut set, from, to, cuttable
+		should-throw
+	catch as no-cut-possible
+		()
+
+test
+	a grid-set = (0, 0), (2, 0)
+	minimum-vertex-cut a, (0, 0), (2, 0) is ()
+
+test
+	a grid-set = (0, 0), (1, 0), (2, 0)
+	minimum-vertex-cut a, (0, 0), (2, 0) is (1, 0),
+
+test
+	a grid-set = parse grid-set, quote
+		0, 0 to 3, 3
+		•••
+		• •
+		•••
+	minimum-vertex-cut a, (0, 0), (2, 2) is (0, 1), (1, 0)
+
+test
+	a grid-set = parse grid-set, quote
+		0, 0 to 4, 3
+		••••
+		• •
+		•••
+	minimum-vertex-cut a, (0, 0), (3, 2) is (2, 2),
+
+test
+	a grid-set = parse grid-set, quote
+		0, 0 to 5, 5
+		• •••
+		• • •
+		•••••
+		• •
+		•••••
+	minimum-vertex-cut a, (0, 0), (4, 4) is (2, 2),
+
+test
+	a grid-set = parse grid-set, quote
+		0, 0 to 7, 5
+		•••••••
+		• • • •
+		•••••••
+		• • • •
+		•••••••
+	minimum-vertex-cut a, (0, 0), (6, 4) is (0, 1), (1, 0)
+	cuttable grid-set = to (bottom-left: (1, 0), top-right: (6, 5))::grid-rect
+	minimum-vertex-cut a, (0, 0), (6, 4), cuttable is (1, 0), (1, 2), (1, 4)

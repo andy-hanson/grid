@@ -1,0 +1,158 @@
+import
+	keen/parse
+	keen/string/unicode
+	keen/string/util
+	./geometry
+	./mut-bounded-grid
+
+| Grid of non-optional values
++bounded-grid[t] record
+	bounds grid-rect
+	values t[]
++new[t] t bounded-grid() = (), ()
++make[t] t bounded-grid(bounds grid-rect) t new
+	make bounds, {}
++make[t] t bounded-grid(bounds grid-rect, f t mut(pos grid-pos))
+	move-to make::(t mut-bounded-grid) bounds, f
++to[t] t bounded-grid(a t mut-bounded-grid)
+	move-to copy a
++move-to[t] t bounded-grid(a t mut-bounded-grid)
+	res t bounded-grid = a.bounds, trusted cast-immutable a.values
+	a.bounds_ := ()
+	a.values := ()
+	res
++to[t] t mut-bounded-grid(a t bounded-grid)
+	a.bounds, a.values.to
++to[t] json(a t bounded-grid) t to-json
+	for::json[] pos, value in a
+		pos.to, value.to
++to[t] t bounded-grid(_ json) = throw todo
++any[t] bool(a t bounded-grid)
+	any a.values
++size[t] nat32(a t bounded-grid)
+	size a.values
++width[t] nat16(a t bounded-grid)
+	a.bounds.width
++height[t] nat16(a t bounded-grid)
+	a.bounds.height
+| May throw {pos-out-of-bounds}
++subscript[t] t(a t bounded-grid, pos grid-pos)
+	assert index = index-for-pos a.bounds, pos else pos-out-of-bounds pos, a.bounds
+	a.values[index]
++ ~[t] t bounded-grid(a t bounded-grid, (pos grid-pos, value t))
+	assert index = index-for-pos a.bounds, pos
+	a.bounds, set a.values, index.nth, value
++some[t] bool(a t bounded-grid, f bool mut(pos grid-pos, value t))
+	some 0 .. a.values.size, of index
+		x = index % a.bounds.width
+		y = index / a.bounds.width
+		f[a.bounds.bottom-left + (x.to, y.to)::grid-displacement, a.values[index]]
++map-values[output, input] output bounded-grid(a input bounded-grid, f output mut(pos grid-pos, x input))
+	bounds: a.bounds
+	values: for pos in all-positions a.bounds
+		f[pos, a[pos]]
+| Minimum grid-rect containing every position for which {f} is true
++bounds-of[t] grid-rect(a t bounded-grid, f bool mut(x t))
+	fold (), a, of res, (pos, value)
+		if f[value] then res | pos else res
++with-bounds[t] t bounded-grid(a t bounded-grid, bounds grid-rect, default-value t)
+	if bounds == a.bounds
+		a
+	else
+		make bounds, {if a.bounds[it] then a[it] else default-value}
+
++shrink-to[t] t bounded-grid(a t bounded-grid, bounds grid-rect)
+	assert contains a.bounds, bounds
+	make bounds, a[it]
++shrink-to-where[t] t bounded-grid(a t bounded-grid, f bool mut(x t))
+	shrink-to a, bounds-of a, f
+
++bounded-grid-rows[t] record
+	inner t bounded-grid
++rows[t] t bounded-grid-rows(a t bounded-grid) = a,
++size[t] nat32(a t bounded-grid-rows) = a.inner.height
++some[t] bool(a t bounded-grid-rows, f bool mut(x t array-view))
+	some 0 .. a.inner.height, of y
+		f[row a.inner, y]
++some-reverse[t] bool(a t bounded-grid-rows, f bool mut(x t array-view))
+	some-reverse 0::nat16 .. a.inner.height, of y
+		f[row a.inner, y]
+
++row[t] t array-view(a t bounded-grid, y nat32)
+	assert y < a.height else index-too-big y, a.height
+	begin = y * a.width
+	a.values[begin .. begin + a.width]
+
++show[t] string(a t bounded-grid) t show
+	do if any a else "empty"
+	"{show a.bounds}\n{show-without-bounds a}"
++show-without-bounds[t] string(a t bounded-grid) t show
+	do if any a else "empty"
+	shown-values string[] = map a.values, it.show
+	if every shown-values, {it == "false" or it == "true"}
+		show-with-single-char-entries-without-bounds a, of x
+			match show x
+			as false
+				" "
+			as true
+				"•"
+			else
+				throw unreachable
+	elif every shown-values, {it == "false" or it == "true" or it == "none"}
+		show-with-single-char-entries-without-bounds a, of x
+			match show x
+			as none
+				" "
+			as false
+				"F"
+			as true
+				"T"
+			else
+				throw unreachable
+	elif every shown-values, it.to::char32[].size == 1
+		show-with-single-char-entries-without-bounds a, it.show.to::char32[].only!
+	else
+		max = max-of! shown-values, it.size
+		with out in build
+			for y in reverse a.bounds.bottom .. a.bounds.top
+				for x in a.bounds.left .. a.bounds.right
+					unless x == a.bounds.left
+						out ~= " "
+					shown = shown-values[index-for-pos! a.bounds, (x, y)]
+					for _ in 0 .. max - shown.size
+						out ~= " "
+					out ~~= shown.to
+				unless y == a.bounds.bottom
+					out ~= "\n"
+
++show-with-single-char-entries[t] string(a t bounded-grid, f char32 mut(x t))
+	show-with-single-char-entries a.bounds, f[a[it]]
+
++show-with-single-char-entries-without-bounds[t] string(a t bounded-grid, f char32 mut(x t))
+	show-with-single-char-entries-without-bounds a.bounds, f[a[it]]
+
++show-with-single-char-entries string(a grid-rect, f char32 mut(x grid-pos))
+	if any a
+		"{show a}\n{show-with-single-char-entries-without-bounds a, f}"
+	else
+		"empty"
+
++show-with-single-char-entries-without-bounds string(a grid-rect, f char32 mut(x grid-pos))
+	do if any a else "empty"
+	join "\n", for y in reverse a.bottom .. a.top
+		strip-right join "", for x in a.left .. a.right then f[x, y].to
+
++bounded-grid[t] t bounded-grid grammar(value-for-empty-space t, parse-elem t data(x char32)) t data
+	parse: of iter
+		bounds = parse grid-rect, iter
+		res t mut-bounded-grid = make bounds, {value-for-empty-space}
+		parse-grid-like bounds, iter, of pos, char
+			res[pos] := parse-elem[char]
+		move-to res
+
+~parse-grid-like void(bounds grid-rect, iter string-iterator, f void mut(pos grid-pos, char char32))
+	for y in reverse bounds.bottom .. bounds.top
+		assert try-take iter, "\n" else inner-parse-error "newline"
+		for x in bounds.left .. bounds.right
+			do unless peek-end-of-line iter or try-take iter, " "
+			f[(x, y), next-char32 iter]

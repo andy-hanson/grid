@@ -1,0 +1,167 @@
+import
+	./geometry
+	./grid-set
+
+| Represents a path through a grid that moves one {dir4} step at a time.
++grid-path record
+	positions grid-pos[]
+do
+	for pos0, pos1 in adjacent-pairs positions
+		assert is-next-to pos0, pos1
++list-new grid-path(positions grid-pos[])
+	positions,
++any bool(a grid-path)
+	any a.positions
++size nat(a grid-path)
+	size a.positions
++to grid-set(a grid-path)
+	a.positions.to
++some bool(a grid-path, f bool mut(x grid-pos))
+	some a.positions, f
++reverse grid-path(a grid-path)
+	positions: a.positions.reverse.to
+
++ ~ grid-path(pos grid-pos, path grid-path)
+	assert not any path or is-next-to pos, path[0].pos
+	positions: pos ~ path.positions
++ ~ grid-path(path grid-path, pos grid-pos)
+	assert not any path or is-next-to pos, path[end - 1].pos
+	positions: path.positions ~ pos
++ ~~ grid-path(a grid-path, b grid-path)
+	do if any a else b
+	do if any b else a
+	assert is-next-to a[end - 1].pos, b[0].pos
+	positions: a.positions ~~ b.positions
+
++find grid-path-at-index?(a grid-path, pos grid-pos)
+	a?[index-of a.positions, pos]
+
++subscript grid-path(a grid-path, range nat range)
+	positions: a.positions[range].to
++subscript grid-path(a grid-path, range range-relative-to-end)
+	a[to-range a, range]
+
++grid-path-at-index record
+	path grid-path
+	index nat
++subscript grid-path-at-index(a grid-path, index nat)
+	assert index < a.size else index-too-big index, a.size
+	a, index
++subscript grid-path-at-index(a grid-path, index index-relative-to-end)
+	a, to-index a, index
++pos grid-pos(a grid-path-at-index)
+	a.path.positions[a.index]
++prev-pos grid-pos?(a grid-path-at-index)
+	unless a.index == 0
+		a.path.positions[a.index - 1]
++next-pos grid-pos?(a grid-path-at-index)
+	next = a.index + 1
+	unless next == a.path.positions.size
+		a.path.positions[next]
++dir-to-prev dir4?(a grid-path-at-index)
+	if prev = prev-pos a
+		assert-exact-dir4 prev - a.pos
++dir-from-prev dir4?(a grid-path-at-index)
+	if dir = dir-to-prev a
+		-dir
++dir-to-next dir4?(a grid-path-at-index)
+	if next = next-pos a
+		assert-exact-dir4 next - a.pos
++dir-from-next dir4?(a grid-path-at-index)
+	if dir = dir-to-next a
+		-dir
+
+| Tries to get a grid-path from a path-like set.
+| If there is any ambiguity (such as a 2x2 block), this is an empty option.
++try-from-set grid-path?(set grid-set)
+	match set.size
+	as 0
+		()::grid-path
+	as 1
+		set.only!,
+	as 2
+		x, y = only2! set
+		if is-next-to x, y
+			x, y
+	else
+		ends grid-pos[] = filter::grid-pos[] set, of x
+			(count x.neighbors4, set[it]) == 1
+		do if end0, end1 = only2 ends
+		do if pos1 = only-where end0.neighbors4, set[it]
+		res grid-path = with out in build
+			out ~= end0
+			out ~= pos1
+			prev mut = end0
+			cur mut = pos1
+			# This can't loop forever, since we started on a position with only one neighbor.
+			while next = only-where cur.neighbors4, {set[it] and it != prev}
+				prev := cur
+				cur := next
+				out ~= cur
+		if res.size == set.size
+			res[0].pos is end0
+			res[end - 1].pos is end1
+			res
+
+| Characterizes a single position within a {grid-path}.
+| Does not depend on the path direction (i.e., {north-west} could be north-to-west or west-to-north)
++grid-path-part enum
+	| Used if the path has only 1 position
+	single
+	| Ending of the path, facing north (meaning the second path position is to the south)
+	cap-north
+	cap-east
+	cap-south
+	cap-west
+	| Connects south to north (in either direction)
+	south-north
+	west-east
+	north-east
+	south-east
+	south-west
+	north-west
+-cap grid-path-part(dir dir4)
+	match dir
+	as north then cap-north
+	as east then cap-east
+	as south then cap-south
+	as west then cap-west
+-middle grid-path-part(a dir4, b dir4)
+	match a
+	as north
+		match b
+		as north then throw unreachable
+		as east then north-east
+		as south then south-north
+		as west then north-west
+	as east
+		match b
+		as north then north-east
+		as east then throw unreachable
+		as south then south-east
+		as west then west-east
+	as south
+		match b
+		as north then south-north
+		as east then south-east
+		as south then throw unreachable
+		as west then south-west
+	as west
+		match b
+		as north then north-west
+		as east then west-east
+		as south then south-west
+		as west then throw unreachable
++kind grid-path-part(a grid-path-at-index)
+	pos = a.pos
+	if a.index == 0
+		if a.path.size == 1
+			single
+		else
+			cap closest-dir4 pos - a.path.positions[1]
+	elif a.index == a.path.positions.size - 1
+		cap closest-dir4 pos - a.path.positions[a.index - 1]
+	else
+		prev = closest-dir4 a.path.positions[a.index - 1] - pos
+		next = closest-dir4 a.path.positions[a.index + 1] - pos
+		middle prev, next

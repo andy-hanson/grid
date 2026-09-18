@@ -1,0 +1,62 @@
+import
+	../geometry
+	../grid-path
+	../grid-set
+
+test
+	a grid-path = ()
+	any a is false
+	size a is 0
+	try
+		_ = a[0]
+		should-throw
+	catch e as index-too-big
+		e.actual is 0
+		e.max-exclusive is 0
+
+test
+	a grid-path = (0, 0),
+	any a is true
+	size a is 1
+	a[0].pos is 0, 0
+	a[0].dir-to-prev is ()
+	a[0].dir-to-next is ()
+	a[0].kind is single
+
+test
+	a grid-path =
+		- 0, 0
+		- 1, 0
+		- 1, 1
+		- 0, 1
+	any a is true
+	size a is 4
+
+	a[0].pos is 0, 0
+	a[0].dir-to-prev is ()
+	a[0].dir-to-next is east
+	a[0].kind is cap-west
+
+	a[1].pos is 1, 0
+	a[1].dir-to-prev is west
+	a[1].dir-to-next is north
+	a[1].kind is north-west
+
+	a[2].pos is 1, 1
+	a[2].dir-to-prev is south
+	a[2].dir-to-next is west
+	a[2].kind is south-west
+
+	a[3].pos is 0, 1
+	a[3].dir-to-prev is east
+	a[3].dir-to-next is ()
+	a[3].kind is cap-west
+
+test
+	try-from-set () is ()::grid-path
+	try-from-set ((3, 4),) is (3, 4),
+	try-from-set ((1, 2), (1, 3)) is ((1, 2), (1, 3))
+	try-from-set ((1, 2), (2, 3)) is ()
+	try-from-set ((0, 0), (0, 1), (1, 0)) is (1, 0), (0, 0), (0, 1)
+	try-from-set ((0, 0), (0, 1), (1, 0), (-1, 0)) is ()
+	try-from-set ((0, 0), (0, 1), (1, 0), (1, 1)) is ()
