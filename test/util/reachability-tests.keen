@@ -1,0 +1,73 @@
+import
+	keen/parse
+	../../geometry
+	../../grid-path
+	../../grid-set
+	../../grid-set-set
+	../../util/reachability
+
+test
+	a = parse grid-set, quote
+		0, 0 to 3, 3
+		  •
+		•••
+		•
+	is-contiguous a is true
+test
+	a = parse grid-set, quote
+		0, 0 to 3, 3
+		  •
+		• •
+		•
+	is-contiguous a is false
+
+test
+	ground = parse grid-set, quote
+		0, 0 to 3, 3
+		•••
+		  •
+		•••
+	path0 = find-path ground, (2, 0), (2, 0), 0
+	path0 is ()::grid-path
+	any path0! is false
+
+	find-path ground, (0, 0), (0, 2), 5 is ()
+	find-path ground, (0, 0), (0, 2), 6 is
+		- 1, 0
+		- 2, 0
+		- 2, 1
+		- 2, 2
+		- 1, 2
+		- 0, 2
+	# OK if initial position is not walkable
+	find-path ground, (1, 1), (0, 2), 6 is
+		- 1, 2
+		- 0, 2
+
+test
+	walkable = parse grid-set, quote
+		0, 0 to 3, 3
+		 ••
+		• •
+		••
+	set = parse grid-set, quote
+		0, 0 to 3, 3
+		 •
+		  •
+		••
+	reachable-groups set, walkable is
+		- (0, 0), (1, 0)
+		- (2, 1), (1, 2)
+
+test
+	walkable = parse grid-set, quote
+		0, 0 to 5, 3
+		••
+		•  •
+		•••••
+	distant-from grid-set = (0, 0),
+	most-distant-positions (), (), 1 is ()
+	most-distant-positions walkable, distant-from, 1 is (4, 0),
+	most-distant-positions walkable, distant-from, 2 is (4, 0), (1, 2)
+	most-distant-positions walkable, distant-from, 3 is (4, 0), (1, 2), (2, 0)
+	most-distant-positions walkable, distant-from, 10 is walkable - ((0, 0),)

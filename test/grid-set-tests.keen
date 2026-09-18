@@ -1,0 +1,81 @@
+import
+	keen/parse
+	../geometry
+	../grid-set
+
+test
+	a grid-set = ()
+	validate a
+	index-of-pos a, (1, 1) is ()
+
+	b grid-set = a | (1, 1)
+	validate b
+	index-of-pos b, (1, 2) is ()
+	b.bounds is square1 (1, 1)
+	to::grid-pos[] b is (1, 1),
+
+	c grid-set = b | (2, 2)
+	validate c
+	c.bounds is bottom-left: (1, 1), top-right: (3, 3)
+	to::grid-pos[] c is (1, 1), (2, 2)
+
+	c - (1, 2)::grid-pos is c
+	d grid-set = c - (1, 1)::grid-pos
+	validate d
+	d.bounds is square1 (2, 2)
+
+	b & d is ()
+	b | d is c
+
+test
+	a grid-set = (1, 1), (3, 0)
+	s string = quote
+		1, 0 to 4, 2
+		•
+		  •
+	show a is s
+	parse grid-set, s is a
+
+-validate void(a grid-set)
+	size a is count a, {true}
+	parse grid-set, a.show is a
+	for index, x in with-index a
+		index-of-pos a, x is index
+
+test
+	a grid-set = (1, 1), (2, 2), (3, 3)
+	b grid-set = (2, 2), (4, 4)
+	diff a, b is
+		removed: (1, 1), (3, 3)
+		added: (4, 4),
+
+test
+	ground grid-rect = bottom-left: (0, 0), top-right: (5, 5)
+	a grid-set = (2, 2),
+	filter-that-neighbor a, ground is a
+
+test
+	ground grid-rect = bottom-left: (0, 0), top-right: (5, 5)
+	a grid-rect = bottom-left: (1, 1), top-right: (4, 4)
+	filter-that-neighbor a.to, ground is a.to - (2, 2)::grid-pos
+
+test
+	a = parse grid-set, quote
+		0, 0 to 2, 3
+		•
+		••
+		•
+	rotate a, forward is a
+	show rotate a, left is quote
+		-2, 0 to 1, 2
+		 •
+		•••
+	show rotate a, right is quote
+		0, -1 to 3, 1
+		•••
+		 •
+	show rotate a, backward is quote
+		-1, -2 to 1, 1
+		 •
+		••
+		 •

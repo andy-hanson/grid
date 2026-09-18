@@ -1,0 +1,51 @@
+import
+	./geometry
+	./mut-sparse-grid
+	./mut-sparse-multi-grid
+	./sparse-grid
+
+| Can store any number of values as each position.
++sparse-multi-grid[t] record
+	inner t[] sparse-grid
++to[t] json(a t sparse-multi-grid) t to-json
+	to::json to::(grid-pos, t)[] a
++to[t] t sparse-multi-grid(a json) t from-json
+	list-new to::(grid-pos, t)[] a
++list-new[t] t sparse-multi-grid(pairs (grid-pos, t)[])
+	res t mut-sparse-multi-grid = ()
+	res ~~= pairs
+	move-to res
++to[t] (grid-pos, t)[](a t sparse-multi-grid) = map a, {it}
++move-to[t] t sparse-multi-grid(a t mut-sparse-multi-grid)
+	inner t[] sparse-grid = for pos, values in a.inner then pos, move-to values
+	clear a
+	inner: inner
++subscript[t] t[](a t sparse-multi-grid, pos grid-pos)
+	a.inner[pos] else ()
++filter-at[t] t sparse-multi-grid(a t sparse-multi-grid, pos grid-pos, f bool mut(value t))
+	if v = a.inner[pos]
+		filtered t[] = filter v, f
+		if filtered.size == v.size
+			a
+		else
+			inner: a.inner ~ (pos, filtered)
+	else
+		a
++ ~[t] t sparse-multi-grid(a t sparse-multi-grid, (pos grid-pos, value t))
+	inner: a.inner ~ (pos, a[pos] ~ value)
++ |[t] t sparse-multi-grid(a t sparse-multi-grid, b t sparse-multi-grid)
+	inner: merge a.inner, b.inner, of x, y then x ~~ y
+
++try-remove[t] t sparse-multi-grid?(a t sparse-multi-grid, (key grid-pos, value t)) t equal
+	do if v = a.inner[key]
+	do if index = index-of v, value
+	new-values = remove-at v, index
+	inner: if any new-values
+		a.inner ~ (key, new-values)
+	else
+		a.inner - key
++size[t] nat32(a t sparse-multi-grid)
+	sum a.inner, it.b.size
++some[t] bool(a t sparse-multi-grid, f bool mut(pos grid-pos, value t))
+	some a.inner, of key, values
+		some values, {f[key, it]}

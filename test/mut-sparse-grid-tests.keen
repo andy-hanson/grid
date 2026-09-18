@@ -1,0 +1,59 @@
+import
+	../geometry
+	../mut-sparse-grid
+
+test
+	a string mut-sparse-grid =
+		- (1, 2), "a"
+	a[1, 2] is "a"
+	a[2, 1] is ()
+	any a is true
+	size a is 1
+
+	a[2, 1] := "b"
+	a[1, 2] is "a"
+	a[2, 1] is "b"
+	size a is 2
+
+	ensure a, (1, 2), {"c"} is "a"
+
+	try
+		for _ in a
+			a[1, 2] := "c"
+		should-throw
+	catch as was-locked
+		()
+
+	to::(grid-pos, string)[] a is
+		- (2, 1), "b"
+		- (1, 2), "a"
+
+	a -= 2, 1
+	to::(grid-pos, string)[] a is
+		- (1, 2), "a"
+	a -= 3, 4
+	to::(grid-pos, string)[] a is
+		- (1, 2), "a"
+	a -= 1, 2
+	to::(grid-pos, string)[] a is ()
+	any a is false
+
+test
+	a string mut-sparse-grid =
+		- (1, 2), "a"
+		- (1, 2), "b"
+	to::(grid-pos, string)[] a is
+		- (1, 2), "b"
+
+test
+	a nat16 mut-sparse-grid = ()
+	a[2, 1] := 0
+	a[1, 0] := 1
+	a[1, 1] := 1
+	a[3, 0] := 2
+
+	a[2, 1] is 0
+	a[1, 0] is 1
+	a[1, 1] is 1
+	a[3, 0] is 2
+	a[2, 0] is ()

@@ -1,0 +1,187 @@
+import
+	keen/bits
+	./geometry
+
+| Mutable set of {grid-pos}
++mut-grid-set record mut
+	~bounds_ mut grid-rect
+	~bits mut nat32 buffer
+	~size-and-locked mut nat32
+-locked-flag nat32() = 0x80000000
+-write-locked bool(a mut-grid-set)
+	bits-intersect a.size-and-locked, locked-flag
+-set-write-locked void(a mut-grid-set, b bool)
+	if b
+		forbid write-locked a else was-locked
+		a.size-and-locked |:= locked-flag
+	else
+		assert write-locked a
+		a.size-and-locked &:= ~locked-flag
++list-new mut-grid-set(values grid-pos[])
+	res mut-grid-set = bounds_: (), bits: (), size-and-locked: ()
+	for pos in values
+		res ~= pos
+	res
++empty mut-grid-set(bounds grid-rect)
+	bounds_: bounds
+	bits: n-of (divide-and-round-up bounds.area, 32), 0
+	size-and-locked: 0
++to mut-grid-set(bounds grid-rect)
+	area = area bounds
+	bits nat32 buffer = n-of (divide-and-round-up area, 32), max-value
+	remainder nat32 = area % 32
+	unless remainder == 0
+		bits[end - 1] := low-n-bits remainder
+	bounds_: bounds
+	bits: bits
+	size-and-locked: area
++to mut-grid-set(positions grid-pos[])
+	res = empty find-bounds positions
+	for pos in positions
+		res[pos] := true
+	res
++to grid-pos[](a mut-grid-set)
+	map a, {it}
+| Current capacity. This may be bigger than the smallest possible bounds.
+| For the smallest bounds, call {shrink-to-actual} first.
++bounds grid-rect(a mut-grid-set)
+	a.bounds_
++any bool(a mut-grid-set)
+	a.size != 0
++size nat32(a mut-grid-set)
+	a.size-and-locked & ~locked-flag
++swap void(a mut-grid-set, b mut-grid-set)
+	forbid write-locked a or write-locked b
+	temp-bounds = a.bounds
+	temp-bits = a.bits
+	temp-size = a.size-and-locked
+	a.bounds_ := b.bounds_
+	a.bits := b.bits
+	a.size-and-locked := b.size-and-locked
+	b.bounds_ := temp-bounds
+	b.bits := temp-bits
+	b.size-and-locked := temp-size
+| Returns the smallest rect that contains all points in the set.
+-find-bounds grid-rect(a mut-grid-set)
+	fold (), a, of x, y then x | y
+-find-bounds grid-rect(a grid-pos[])
+	fold (), a, of x, y then x | y
+| Shrink the grid to the points it actually contains
++shrink-to-actual void(a mut-grid-set)
+	forbid write-locked a else was-locked
+	bounds = find-bounds a
+	do unless bounds == a.bounds
+	res mut-grid-set = empty bounds
+	for pos in a
+		res[pos] := true
+	swap a, res
++clear void(a mut-grid-set)
+	swap a, ()
++copy mut-grid-set(a mut-grid-set)
+	bounds_: a.bounds
+	bits: copy a.bits
+	size-and-locked: a.size-and-locked & ~locked-flag
++subscript bool(a mut-grid-set, pos grid-pos)
+	do if word-index, bit-index = grid-set-indices a.bounds, pos
+	has-bit a.bits[word-index], bit-index
+| Finds the nth position in iteration order
++subscript grid-pos(a mut-grid-set, index nat32)
+	assert index < a.size else index-too-big index, a.size
+	word-index, bit-index = nth-one-bit! (trusted cast-immutable a.bits), index
+	assert has-bit a.bits[word-index], bit-index
+	pos-of-grid-set-indices a.bounds, (word-index, bit-index)
++ ~= void(a mut-grid-set, pos grid-pos)
+	forbid write-locked a else was-locked
+	a[pos] := true
++ ~~= void(a mut-grid-set, b mut-grid-set)
+	forbid write-locked a else was-locked
+	for pos in b
+		a ~= pos
++ -= void(a mut-grid-set, pos grid-pos)
+	forbid write-locked a else was-locked
+	a[pos] := false
++try-add bool(a mut-grid-set, pos grid-pos)
+	forbid write-locked a else was-locked
+	unless a[pos]
+		a ~= pos
+		true
++set-subscript void(a mut-grid-set, pos grid-pos, value bool)
+	forbid write-locked a else was-locked
+	do if a[pos] != value
+	if word-index, bit-index = grid-set-indices a.bounds, pos
+		if value
+			a.bits[word-index] add-bit:= bit-index
+			a.size-and-locked +:= 1
+		else
+			a.bits[word-index] remove-bit:= bit-index
+			a.size-and-locked -:= 1
+	else
+		copy mut-grid-set = empty a.bounds | pos
+		for pos2 in a
+			copy[pos2] := true
+		copy[pos] := value
+		swap a, copy
+
++some bool(a mut-grid-set, f bool mut(pos grid-pos))
+	locked-before = write-locked a
+	unless locked-before
+		a.write-locked := true
+	finally
+		unless locked-before
+			a.write-locked := false
+	some a.bits.with-index, of word-index, word
+		some word.one-bits, of bit-index
+			f[pos-of-grid-set-indices a.bounds, (word-index, bit-index)]
+
++ += void(a mut-grid-set, displacement grid-displacement)
+	forbid write-locked a else was-locked
+	a.bounds_ +:= displacement
+
++is-next-to bool(pos grid-pos, set mut-grid-set)
+	some pos.neighbors4, {set[it]}
+
++is-adjacent bool(a mut-grid-set, b mut-grid-set)
+	some a, {is-next-to it, b}
+
+~pos-of-grid-set-indices grid-pos(bounds grid-rect, (word-index nat32, bit-index nat32))
+	assert bit-index < 32
+	full-index = (word-index << 5) + bit-index
+	x: bounds.left + to full-index % bounds.width
+	y: bounds.bottom + to full-index / bounds.width
+
+| Returns a result if the position is the nth position in iteration order in the set.
++index-of-pos nat32?(a mut-grid-set, pos grid-pos)
+	do if word-index, bit-index = grid-set-indices a.bounds, pos
+	word = a.bits[word-index]
+	do if has-bit word, bit-index
+	(sum a.bits[0 .. word-index], it.count-ones) + count-ones-before word, bit-index
+
+~count-ones-before nat32(word nat32, bit-index nat32)
+	count-ones word << (32 - bit-index)
+
+~grid-set-indices (nat32, nat32)?(bounds grid-rect, pos grid-pos)
+	do if bounds[pos]
+	rel = pos - bounds.bottom-left
+	bit-index nat32 = rel.y.to * bounds.width + rel.x.to
+	bit-index >> 5, bit-index & 0b11111
+
+| Returns word index and bit index.
+| Returns an empty options if index > the number of 1 bits
+~nth-one-bit (nat32, nat32)?(bits nat32[], index nat32)
+	remaining mut = index
+	res mut (nat32, nat32)? = ()
+	word-index mut nat32 = 0
+	until res or word-index::nat == bits.size
+		word = bits[word-index]
+		s = count-ones word
+		if remaining >= s
+			remaining -:= s
+			word-index +:= 1
+		else
+			res := word-index, nth-one-bit! word, remaining
+	res
+
++inner-boundary grid-pos[](a mut-grid-set, dir dir4)
+	filter a, {not a[it + dir]}
++outer-boundary grid-pos[](a mut-grid-set, dir dir4)
+	map (inner-boundary a, dir), it + dir

@@ -1,0 +1,130 @@
+| Functions that deal with grid connectedness (such as path finding)
+import
+	keen/col/mut-queue
+	../bounded-grid
+	../geometry
+	../grid-path
+	../grid-set
+	../grid-set-set
+	../mut-bounded-grid
+	../mut-grid-set
+	../util/more-geometry
+
++is-contiguous bool(a grid-set)
+	a.to-contiguous-grid-sets.size <= 1
+
+| Entire set of points reachable from {start} by walking along the {ground} (in {dir4} directions)
++reachable-set grid-set(ground grid-set, start grid-pos)
+	res mut-grid-set = start,
+	frontier grid-pos mut[] = start,
+	while p = pop frontier
+		for n in neighbors4 p
+			if ground[n] and try-add res, n
+				res ~= n
+				frontier ~= n
+	move-to res
+
++find-path grid-path?(walkable grid-set, from grid-pos, destination grid-pos, max-distance nat8? = ())
+	find-path walkable, from, (destination,), max-distance
+| Returns the first step on the shortest path from {from} to a point in {destination},
+| if the path would be less than {max-distance}.
++find-path grid-path?(walkable grid-set, from grid-pos, destination grid-set, max-distance nat8? = ())
+	do if any destination
+	do unless destination[from] else ()::grid-path
+	do if overlaps walkable, destination
+	do if walkable[from] or is-next-to from, walkable
+	do if not max-distance or (manhattan-distance from, nearest-to! destination, from) < max-distance
+	path-from-distances from, (find-distances-to-any walkable, destination, max-distance), max-distance
+
+-path-from-distances grid-path?(from grid-pos, distances nat8 bounded-grid, max-distance nat8?)
+	get-distance = of::nat8 x grid-pos
+		if distances.bounds[x] then distances[x] else max-value
+	first = min-by! from.neighbors4, get-distance
+	do if get-distance[first] != max-value
+	do if not max-distance or distances[first] < max-distance
+	do with out in build
+	out ~= first
+	cur mut = first
+	until distances[cur] == 0
+		cur := min-by! cur.neighbors4, get-distance
+		out ~= cur
+
++path-first-step dir4?(from grid-pos, distances nat8 bounded-grid, exclude grid-set)
+	f = of::nat8 pos grid-pos
+		if exclude[pos]
+			max-value
+		elif distances.bounds[pos]
+			distances[pos]
+		else
+			max-value
+	res = min-by! from.neighbors4, f
+	unless f[res] == max-value
+		assert-exact-dir4 res - from
+
+| Creates a grid full of the distances to {center} (along {walkable})
+| Consider using the overload with a max-distance for better performance.
++find-distances nat8 bounded-grid(walkable grid-set, center grid-pos)
+	find-distances walkable, center
+| Points that are not walkable to {center} or further away than {max-distance} will be {max-value}
++find-distances nat8 bounded-grid(walkable grid-set, center grid-pos, max-distance nat8?)
+	find-distances-to-any walkable, (center,), max-distance
+
+| Consider using the overload with a max-distance for better performance.
++find-distances-to-any nat8 bounded-grid(walkable grid-set, points grid-set)
+	find-distances-to-any walkable, points, ()
++find-distances-to-any nat8 bounded-grid(walkable grid-set, points grid-set, max-distance nat8?)
+	do unless max-distance == 0 else
+		set grid-set = to points
+		make set.bounds, {if set[it] and walkable[it] then 0 else max-value}
+	assert max-distance < max-value # We need max-value to indicate unmarked
+	new-walkable = if max-distance
+		min-bounds grid-rect = fold (), points, of res, point
+			res | (center: point, size: square max-distance * 2 + 1)::grid-rect
+		walkable & min-bounds
+	else
+		walkable
+	distances nat8 mut-bounded-grid = make new-walkable.bounds, {max-value}
+	frontier grid-pos mut-queue = filter points, new-walkable[it]
+	for point in frontier
+		distances[point] := 0
+	while f = dequeue frontier
+		for next in neighbors4 f
+			do if new-walkable[next]
+			prev-distance = distances[next]
+			new-distance = distances[f] + 1
+			if new-distance < prev-distance and (not max-distance or new-distance <= max-distance)
+				distances[next] := new-distance
+				unless max-distance and new-distance == max-distance
+					frontier ~= next
+	move-to distances
+
+| A point is always reachable from itself
++reachable grid-set(walkable grid-set, start grid-pos)
+	distances = find-distances-to-any walkable, (start,)
+	positions-where distances, it.b != max-value
+
+| Breaks up {a} into sets of points that are all walkable from each other along {walkable}.
+| They don't have to be contiguous in {a}.
++reachable-groups grid-set-set(a grid-set, walkable grid-set)
+	remaining mut = a
+	do with out in build
+	do while any remaining
+	reachable = reachable walkable, remaining[0]
+	out ~= reachable & a
+	remaining -:= reachable
+
+| Returns positions in {walkable} that are as far as possible (in path distance) from {far-from} and each other
+| Positions in {far-from} that are not in {walkable} will have no effect,
+| since this maximizes path length, not geometric distance.
++most-distant-positions grid-set(walkable grid-set, far-from grid-set, n nat)
+	res mut grid-set = ()
+	occupied mut grid-set = far-from
+	remaining mut grid-set = walkable - far-from
+	for _ in 0 .. n
+		do if any remaining
+		distances = find-distances-to-any walkable, occupied
+		pos = max-by! remaining, distances[it]
+		res |:= pos
+		occupied |:= pos
+		remaining -:= pos
+	res

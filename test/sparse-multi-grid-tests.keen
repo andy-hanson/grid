@@ -1,0 +1,16 @@
+import
+	../geometry
+	../sparse-grid
+	../sparse-multi-grid
+
+test
+	a string sparse-multi-grid =
+		- (1, 1), "foo"
+		- (1, 1), "bar"
+		- (2, 2), "baz"
+	b string sparse-multi-grid = for pos, x in a
+		pos, "{x}{x}"
+	b is
+		- (1, 1), "foofoo"
+		- (1, 1), "barbar"
+		- (2, 2), "bazbaz"

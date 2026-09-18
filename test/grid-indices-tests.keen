@@ -1,0 +1,14 @@
+import
+	../geometry
+	../grid-indices
+
+test
+	a grid-indices = size: 2, 3
+	move-in-dir 0, north, a is 2
+	move-in-dir 0, east, a is 1
+	move-in-dir 0, south, a is ()
+	move-in-dir 0, west, a is ()
+	move-in-dir 5, north, a is ()
+	move-in-dir 5, east, a is ()
+	move-in-dir 5, south, a is 3
+	move-in-dir 5, west, a is 4

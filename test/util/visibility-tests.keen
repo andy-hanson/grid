@@ -1,0 +1,137 @@
+import
+	keen/parse
+	../../geometry
+	../../grid-set
+	../../util/visibility
+
+test
+	is-visible (), (0, 7), north, (0, 6), 1, strict is false
+	is-visible (), (0, 7), north, (0, 6), 1, behind1 is true
+
+test
+	blocks-sight grid-set = (0, 0),
+	show all-visible-tiles blocks-sight, (-1, 0), east, 3, strict is quote
+		-1, -2 to 2, 3
+		•••
+		••
+		••
+		••
+		•••
+	all-visible-tiles blocks-sight, (0, 0), east, 3, strict is ()
+	show all-visible-tiles blocks-sight, (0, 1), east, 2, strict is quote
+		0, 0 to 2, 3
+		••
+		••
+		••
+	show all-visible-tiles blocks-sight, (0, 1), east, 2, behind1 is quote
+		-1, 0 to 2, 3
+		•••
+		•••
+		 ••
+	show all-visible-tiles blocks-sight, (0, 1), east, 2, all-directions is quote
+		-1, 0 to 2, 3
+		•••
+		•••
+		•••
+
+test
+	walls grid-set =
+		- 1, 1
+	all-visible-tiles walls, (0, 0), north, 2, strict is
+		(-1, 0), (0, 0), (1, 0), (-1, 1), (0, 1), (1, 1)
+	all-visible-tiles walls, (0, 0), north, 2, behind1 is
+		(-1, -1), (0, -1), (1, -1), (-1, 0), (0, 0), (1, 0), (-1, 1), (0, 1), (1, 1)
+
+test
+	# Can't see through a diagonal
+	blocks-sight = parse grid-set, quote
+		0, 0 to 3, 3
+		•
+		 •
+		  •
+	show all-visible-tiles blocks-sight, (0, 0), east, 3, strict is quote
+		0, -2 to 3, 3
+		•
+		••
+		•••
+		•••
+		•••
+
+test
+	# Can't see through a diagonal
+	blocks-sight = parse grid-set, quote
+		-2, -2 to 3, 3
+		  •
+		 • •
+		•   •
+		 • •
+		  •
+	show all-visible-tiles blocks-sight, (0, 0), east, 3, all-directions is quote
+		-2, -2 to 3, 3
+		  •
+		 •••
+		•••••
+		 •••
+		  •
+
+test
+	# Can't see another wall through a diagonal
+	# Can't see through a diagonal
+	blocks-sight = parse grid-set, quote
+		-2, -2 to 3, 3
+		 •••
+		•• ••
+		•   •
+		•• ••
+		 •••
+	show all-visible-tiles blocks-sight, (0, 0), east, 3, all-directions is quote
+		-2, -2 to 3, 3
+		  •
+		 •••
+		•••••
+		 •••
+		  •
+
+test
+	blocks-sight = parse grid-set, quote
+		-2, -1 to 2, 3
+		 •••
+		•  •
+		 • •
+		  •
+	show all-visible-tiles blocks-sight, (0, 0), north, 5, all-directions is quote
+		-1, -1 to 2, 3
+		••
+		•••
+		•••
+		 •
+
+test
+	# Can't see through a diagonal
+	blocks-sight = parse grid-set, quote
+		-1, -1 to 2, 2
+		 •
+		• •
+		 •
+	show all-visible-tiles blocks-sight, (0, 0), north, 5, all-directions is quote
+		-1, -1 to 2, 2
+		 •
+		•••
+		 •
+
+test
+	# Can't see through a diagonal
+	blocks-sight = parse grid-set, quote
+		0, -1 to 4, 4
+		•
+		 •
+		  •
+		   •
+		••
+	show all-visible-tiles blocks-sight, (0, 0), east, 4, strict is quote
+		0, -1 to 4, 4
+		•
+		••
+		•••
+		••••
+		••••

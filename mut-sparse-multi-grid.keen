@@ -1,0 +1,47 @@
+import
+	./geometry
+	./mut-sparse-grid
+
++mut-sparse-multi-grid[t] record mut
+	~size_ mut nat32
+	~inner t mut[] mut-sparse-grid
++to[t] json(a t mut-sparse-multi-grid) t to-json
+	to::json to::(grid-pos, t)[] a
++to[t] t mut-sparse-multi-grid(a json) t from-json
+	list-new to::(grid-pos, t)[] a
++list-new[t] t mut-sparse-multi-grid(pairs (grid-pos, t)[])
+	inner t mut[] mut-sparse-grid = ()
+	for pos, value in pairs
+		(ensure inner, pos) ~= value
+	size_: sum inner, it.b.size
+	inner: inner
++to[t] (grid-pos, t)[](a t mut-sparse-multi-grid) = map a, {it}
++any[t] bool(a t mut-sparse-multi-grid)
+	a.size_ != 0
++size[t] nat32(a t mut-sparse-multi-grid)
+	a.size_
++clear[t] void(a t mut-sparse-multi-grid)
+	a.size_ := 0
+	clear a.inner
++ ~=[t] void(a t mut-sparse-multi-grid, (pos grid-pos, value t))
+	a.size_ +:= 1
+	(ensure a.inner, pos) ~= value
++ ~~=[t] void(a t mut-sparse-multi-grid, pairs (grid-pos, t)[])
+	for pair in pairs
+		a ~= pair
++some[t] bool(a t mut-sparse-multi-grid, f bool mut(pos grid-pos, value t))
+	some a.inner, of pos, values
+		some values, {f[pos, it]}
+
++mut-sparse-multi-grid-at-pos[t] record mut
+	-grid t mut-sparse-multi-grid
+	-pos grid-pos
++subscript[t] t mut-sparse-multi-grid-at-pos(a t mut-sparse-multi-grid, pos grid-pos)
+	a, pos
++ ~=[t] void(a t mut-sparse-multi-grid-at-pos, value t)
+	a.grid ~= (a.pos, value)
++size[t] nat(a t mut-sparse-multi-grid-at-pos)
+	if x = a.grid.inner[a.pos]
+		x.size
++some[t] bool(a t mut-sparse-multi-grid-at-pos, f bool mut(x t))
+	(x = a.grid.inner[a.pos]) and some x, f

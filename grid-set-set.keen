@@ -1,0 +1,169 @@
+import
+	keen/format/base64
+	keen/parse
+	keen/string/unicode
+	./bounded-grid
+	./geometry
+	./grid-set
+	./mut-grid-set-set
+	./mut-grid-set
+	./sparse-grid
+
+| Set of non-overlapping grid-sets
++grid-set-set record -new
+	| Each set is non-empty and no set overlaps another
+	sets grid-set[]
++to json(a grid-set-set)
+	show a
++to grid-set-set(a json)
+	parse grid-set-set, to::string a
+
+| Convert to a grid of set indices
++to-indices-grid nat16 sparse-grid(a grid-set-set)
+	make a.bounds, of pos
+		which-set a, pos
++to-indices-grid nat16? bounded-grid(a grid-set-set)
+	to to-indices-grid a
++from-indices-grid grid-set-set(a nat16 sparse-grid)
+	do if max-index = max-of a, it.b
+	res mut-grid-set[] = map 0 .. max-index + 1, {}
+	for pos, value in a
+		res[value] ~= pos
+	map res, it.move-to
++from-indices-grid grid-set-set(a nat16? bounded-grid)
+	from-indices-grid a.to::(nat16 sparse-grid)
+
++show string(a grid-set-set)
+	show a, a.bounds
++show string(a grid-set-set, bounds grid-rect)
+	grid nat16? bounded-grid = with-bounds a.to-indices-grid, bounds, ()
+	if a.size < 64
+		show-with-single-char-entries grid, of x
+			if x
+				to::char32 base64-encode-single::char8 x.to::nat8
+			else
+				" "
+	else
+		show grid
++show-without-bounds string(a grid-set-set, bounds grid-rect)
+	grid nat16? bounded-grid = with-bounds a.to-indices-grid, bounds, ()
+	if a.size < 64
+		show-with-single-char-entries-without-bounds grid, of x
+			if x
+				to::char32 base64-encode-single::char8 x.to::nat8
+			else
+				" "
+	else
+		show-without-bounds grid
++grid-set-set grid-set-set grammar()
+	parse: of iter
+		bounds = parse grid-rect, iter
+		sets mut-grid-set-set = ()
+		parse-grid-like bounds, iter, of pos, char
+			index = base64-decode-single to::char8 char
+			until index::nat16 < sets.size
+				sets ~= ()
+			sets[index] ~= pos
+		move-to sets
+
+| This is O(n) (where n is the number of sets)
++bounds grid-rect(a grid-set-set)
+	union_ a.sets, it.bounds
+
++any bool(a grid-set-set)
+	any a.sets
+
+| Combine all subsets into a single set
++combine grid-set(a grid-set-set)
+	union_ a.sets
+
++list-new grid-set-set(sets grid-set[])
+	sets.to
++to grid-set-set(sets grid-set[])
+	assert every sets, it.any
+	for x, y in all-pairs sets
+		forbid overlaps x, y
+	sets: sort sets
+
++to grid-set[](a grid-set-set)
+	a.sets
++to grid-set-set(a mut-grid-set-set)
+	sets: sort map a.sets, it.to
++move-to grid-set-set(a mut-grid-set-set)
+	sets: sort map a.sets.move-to::mut-grid-set[], it.move-to
+
++subscript grid-set(a grid-set-set, index nat32)
+	a.sets[index]
+
++any bool(a grid-set-set, pos grid-pos)
+	which-set a, pos
+
+# Returns the index of the set.
++which-set nat16?(a grid-set-set, pos grid-pos)
+	if res = find-index a.sets, it[pos]
+		to::nat16 res
+
++remove-set grid-set-set(a grid-set-set, set-index nat16)
+	sets: remove-at a.sets, set-index
+| If {new-value} might be empty, use {update-or-remove-set} instead
++update-set grid-set-set(a grid-set-set, set-index nat16, new-value grid-set)
+	assert any new-value
+	sets: update-at a.sets, set-index, new-value
++update-or-remove-set grid-set-set(a grid-set-set, set-index nat16, new-value grid-set)
+	if any new-value
+		update-set a, set-index, new-value
+	else
+		remove-set a, set-index
+
+| Number of sets, not number of tiles
++size nat16(a grid-set-set)
+	a.sets.size.to
++some bool(a grid-set-set, f bool mut(set grid-set))
+	some a.sets, f
+
++ ~ grid-set-set(a grid-set-set, b grid-set)
+	forbid some a.sets, {overlaps it, b}
+	sets: a.sets ~ b
+
++try-move grid-set-set?(a grid-set-set, set-index nat16, direction dir4)
+	old-set = a.sets[set-index]
+	boundary = outer-boundary old-set, direction
+	do if every a.sets.with-index, of i, set
+		i == set-index or not some boundary, set[it]
+	sets: set a.sets, set-index.nth, old-set + direction
+
+| True if every point in {b} is in {a}
++contains-all bool(a grid-set-set, b grid-set)
+	every b, {any a, it}
+
++combine-assert-disjoint grid-set-set(a grid-set-set, b grid-set-set)
+	forbid overlaps a.combine, b.combine
+	sets: a.sets ~~ b.sets
+
+| Finds contiguous sectors of {a}
++to-contiguous-grid-sets grid-set-set(a grid-set)
+	res mut-grid-set mut[] = ()
+	for pos in a
+		first-sector mut mut-grid-set? = ()
+		res filter= of sector
+			do if is-next-to pos, sector else true
+			if first-sector
+				# The new position is adjacent to two sectors, so marge into the first one
+				first-sector! ~~= sector
+				false
+			else
+				sector ~= pos
+				first-sector := sector
+				true
+		unless first-sector
+			res ~= pos,
+	sum res, it.size is a.size
+	map res, it.move-to
+
++remove-overlapping grid-set-set(a grid-set-set, bounds grid-rect)
+	omit a, {overlaps it, bounds}
+
++rotate grid-set-set(a grid-set-set, rotation relative-dir4)
+	map a.sets, {rotate it, rotation}
++flip-horizontally grid-set-set(a grid-set-set)
+	map a.sets, it.flip-horizontally

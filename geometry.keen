@@ -1,0 +1,608 @@
+import
+	keen/bits
+	keen/math/geom2d/aa-rect
+	keen/math/geom2d/size2
+	keen/math/math
+	keen/math/vec
+	keen/parse
+
+region grid-pos
+| -x is west, +x is east
+| -y is south, +y is north
++grid-pos record
+	x int16
+	y int16
++new grid-pos() = 0, 0
++to vec2-32(a grid-pos) = a.x.to, a.y.to
++to grid-pos(a vec2-32)
+	a.x.to, a.y.to
++to json(a grid-pos) = a.x.to, a.y.to
++to grid-pos(a json)
+	x int16, y int16 = to a
+	x, y
++show string(a grid-pos) = "{a.x}, {a.y}"
++grid-pos grid-pos grammar()
+	parse: of iter
+		x = parse int, iter
+		assert try-take iter, ", " else inner-parse-error ", "
+		y = parse int, iter
+		x.to, y.to
++ + grid-pos(a grid-pos, b grid-displacement) = a.x + b.x, a.y + b.y
++ + grid-pos(a grid-pos, b dir4) = a + b.to::grid-displacement
++ + grid-pos(a grid-pos, b dir8) = a + b.to::grid-displacement
++ - grid-pos(a grid-pos, b grid-displacement) = a.x - b.x, a.y - b.y
++ - grid-pos(a grid-pos, b dir4) = a - b.to::grid-displacement
++ - grid-pos(a grid-pos, b dir8) = a - b.to::grid-displacement
++ - grid-displacement(a grid-pos, b grid-pos) = a.x - b.x, a.y - b.y
+| Rotate about origin
++rotate grid-pos(a grid-pos, rotation relative-dir4)
+	to::grid-pos rotate a.to::grid-displacement, rotation
++flip-horizontally grid-pos(a grid-pos)
+	-a.x, a.y
++as-displacement grid-displacement(a grid-pos) = a.x, a.y
++distance float32(a grid-pos, b grid-pos) = length b - a
++distance-squared nat32(a grid-pos, b grid-pos) = length-squared b - a
++manhattan-distance nat16(a grid-pos, b grid-pos) = manhattan-length b - a
++component-in-direction int16(a grid-pos, dir dir4)
+	component-in-direction a.as-displacement, dir
++transpose grid-pos(a grid-pos) = a.y, a.x
++is-next-to bool(a grid-pos, b grid-pos)
+	diff = b - a
+	diff.x == 0 and diff.y.abs == 1 or diff.x.abs == 1 and diff.y == 0
+
++neighbors4 record(center grid-pos)
+| North, east, south, and west neighbors, in that order
++size nat32(_ neighbors4) = 4
++some bool(a neighbors4, f bool mut(x grid-pos))
+	some members::dir4[], f[a.center + it]
++subscript grid-pos(a neighbors4, index nat32)
+	assert index < 4 else index-too-big index, 4
+	a.center + index.to::dir4
+
+region grid-displacement
++grid-displacement record
+	x int16
+	y int16
++new grid-displacement() = 0, 0
++to json(a grid-displacement)
+	to ()::grid-pos + a
++to grid-displacement(a json)
+	a.to::grid-pos.as-displacement
++to grid-displacement(a grid-pos)
+	a.x, a.y
++to grid-displacement(a vec2-32)
+	a.x.to, a.y.to
++to grid-pos(a grid-displacement)
+	a.x, a.y
++to vec2-32(a grid-displacement)
+	a.x.to, a.y.to
++show string(a grid-displacement)
+	show ()::grid-pos + a
++length float32(a grid-displacement)
+	length to::vec2-32 a
++length-less-than bool(a grid-displacement, max float32)
+	a.length-squared.to::float32 < max ** 2
++length-greater-than bool(a grid-displacement, min float32)
+	a.length-squared.to::float32 > min ** 2
++length-squared nat32(a grid-displacement)
+	to a.x * a.x + a.y * a.y
++manhattan-length nat16(a grid-displacement)
+	a.x.abs + a.y.abs
++east grid-displacement() = 1, 0
++west grid-displacement() = -1, 0
++north grid-displacement() = 0, 1
++south grid-displacement() = 0, -1
++ + grid-displacement(a grid-displacement, b grid-displacement)
+	a.x + b.x, a.y + b.y
++ - grid-displacement(a grid-displacement)
+	-a.x, -a.y
++ - grid-displacement(a grid-displacement, b grid-displacement)
+	a.x - b.x, a.y - b.y
++ * grid-displacement(a grid-displacement, scale int16)
+	a.x * scale, a.y * scale
++ / grid-displacement(a grid-displacement, scale int16)
+	a.x / scale, a.y / scale
++ dot int32(a grid-displacement, b grid-displacement)
+	a.x * b.x + a.y * b.y
++ cross int32(a grid-displacement, b grid-displacement)
+	a.x * b.y - a.y * b.x
++ cross-squared nat32(a grid-displacement, b grid-displacement)
+	to (cross a, b) ** 2
++rotate-left grid-displacement(a grid-displacement)
+	-a.y, a.x
++rotate-right grid-displacement(a grid-displacement)
+	a.y, -a.x
++rotate grid-displacement(a grid-displacement, rotation relative-dir4)
+	match rotation
+	as forward
+		a
+	as right
+		rotate-right a
+	as backward
+		-a
+	as left
+		rotate-left a
++closest-dir4 dir4(a grid-displacement)
+	if a.x.abs > a.y.abs
+		if a.x > 0 then east else west
+	else
+		if a.y > 0 then north else south
++assert-exact-dir4 dir4(a grid-displacement)
+	if a.y == 0
+		a.x isnt 0
+		if a.x > 0 then east else west
+	else
+		a.x is 0
+		if a.y > 0 then north else south
++as-dir4 dir4?(a grid-displacement)
+	if a == north
+		north
+	elif a == east
+		east
+	elif a == south
+		south
+	elif a == west
+		west
++component-in-direction int16(a grid-displacement, dir dir4)
+	match dir
+	as north
+		a.y
+	as east
+		a.x
+	as south
+		-a.y
+	as west
+		-a.x
+
+region direction
+
++east-west enum(west, east)
++ - east-west(a east-west)
+	match a
+	as west then east
+	as east then west
++ to dir4(a east-west)
+	match a
+	as west then west
+	as east then east
+
++north-south enum(north, south)
++ - north-south(a north-south)
+	match a
+	as north then south
+	as south then north
++ to dir4(a north-south)
+	match a
+	as north then north
+	as south then south
+
++dir4 enum(north, east, south, west)
+| Treats {a} as a number of right turns from {north}
++to dir4(a nat)
+	match a % 4
+	as 0 then north
+	as 1 then east
+	as 2 then south
+	as 3 then west
+	else then throw unreachable
++to grid-displacement(a dir4)
+	match a
+	as north then north
+	as east then east
+	as south then south
+	as west then west
++ - dir4(a dir4)
+	a + backward
+| Turn that would be required to get from {a} to {b}
++ - relative-dir4(a dir4, b dir4)
+	to wrap-sub b.to::nat8, a.to::nat8
++rotate-left dir4(a dir4)
+	a + left
++rotate-left dir4(a dir4, times nat)
+	a + left * times
++rotate-right dir4(a dir4)
+	a + right
++rotate-right dir4(a dir4, times nat)
+	a + right * times
+| Radians counter-clockwise from {east}
++angle float32(a dir4)
+	match a
+	as north then pi * 0.5
+	as east then 0
+	as south then pi * 1.5
+	as west then pi
+
+| Starting from {a}, attempt to turn towards {b}. Turns at most 90 degrees.
+| Will prefer to turn right instead of left if they are the same amount.
++turn-towards dir4(a dir4, b dir4)
+	if a == b
+		a
+	elif a == -b
+		rotate-right a
+	else
+		b
++dir-and-adjacent record(forward dir4)
++left dir4(a dir-and-adjacent) = rotate-left a.forward
++right dir4(a dir-and-adjacent) = rotate-right a.forward
++size nat32(_ dir-and-adjacent) = 3
++subscript dir4(a dir-and-adjacent, n nat32)
+	match n
+	as 0 then a.left
+	as 1 then a.forward
+	as 2 then a.right
+	else then throw index-too-big n, 3
++some bool(a dir-and-adjacent, f bool mut(x dir4))
+	f[a.left] or f[a.forward] or f[a.right]
+
++dir8 enum(north, northeast, east, southeast, south, southwest, west, northwest)
++to dir8(a nat8)
+	match a % 8
+	as 0 then north
+	as 1 then northeast
+	as 2 then east
+	as 3 then southeast
+	as 4 then south
+	as 5 then southwest
+	as 6 then west
+	as 7 then northwest
+	else then throw unreachable
++to dir8(a dir4)
+	match a
+	as west then west
+	as east then east
+	as south then south
+	as north then north
++to dir4?(a dir8)
+	match a
+	as west then west
+	as east then east
+	as south then south
+	as north then north
+	else then ()
++ - dir8(a dir8)
+	to a.to::nat8 + 4
++rotate-left dir8(a dir8)
+	to a.to::nat8 + 7
++rotate-right dir8(a dir8)
+	to a.to::nat8 + 1
+| Starting from {a}, attempt to turn towards {b}. Turns at most 45 degrees.
+| Will prefer to turn right instead of left if they are the same amount.
++turn-towards dir8(a dir8, b dir8)
+	if a == b
+		a
+	else
+		diff = (wrap-sub b.to::nat8, a.to::nat8) % 8
+		if diff > 4 then rotate-right a else rotate-left a
+
++to grid-displacement(a dir8)
+	match a
+	as north then north
+	as northeast then 1, 1
+	as east then east
+	as southeast then 1, -1
+	as south then south
+	as southwest then -1, -1
+	as west then west
+	as northwest then -1, 1
+
+| Represents a rotation that is a multiple of 90 degrees.
++relative-dir4 enum
+	forward
+	right
+	backward
+	left
+| Treats {a} as a number of right turns
++to relative-dir4(a nat)
+	match a % 4
+	as 0 then forward
+	as 1 then right
+	as 2 then backward
+	as 3 then left
+	else then throw unreachable
++ - relative-dir4(a relative-dir4)
+	to a.to::nat8 + 2
+| Result of performing both turns.
++ + relative-dir4(a relative-dir4, b relative-dir4)
+	to a.to::nat8 + b.to::nat8
+| Result of applying the turn to the initial direction
++ + dir4(a dir4, b relative-dir4)
+	to a.to::nat8 + b.to::nat8
++ * relative-dir4(a relative-dir4, times nat)
+	to wrap-mul a.to::nat8, times.wrap-to::nat8
+| Radians counter-clockwise
++ angle float32(a relative-dir4)
+	match a
+	as forward then 0
+	as left then pi * 0.5
+	as right then pi * 1.5
+	as backward then pi
+
+region grid-rect
+
++grid-rect record
+	| Inclusive
+	left int16
+	| Exclusive
+	right int16
+	| Inclusive
+	bottom int16
+	| Exclusive
+	top int16
+do
+	assert left <= right
+	assert bottom <= top
++new grid-rect() = 0, 0, 0, 0
++new grid-rect(center grid-pos, size nat-size)
+	bottom-left = center - size.to / 2
+	bottom-left: bottom-left
+	top-right: bottom-left + size.to
++new grid-rect(bottom-left grid-pos, top-right grid-pos)
+	left: bottom-left.x
+	right: top-right.x
+	bottom: bottom-left.y
+	top: top-right.y
++new grid-rect(bottom-left grid-pos, size nat-size)
+	bottom-left: bottom-left
+	top-right: bottom-left + size.to
++new grid-rect(center grid-pos, radius nat16)
+	left: center.x - radius.to
+	right: center.x + radius.to
+	bottom: center.y - radius.to
+	top: center.y + radius.to
++square1 grid-rect(a grid-pos)
+	bottom-left: a
+	size: 1, 1
++to aa-rect32(a grid-rect)
+	left: a.left.to
+	right: a.right.to
+	bottom: a.bottom.to
+	top: a.top.to
+| Smallest {grid-rect} containing the entire {aa-rect32}
++smallest-containing grid-rect(a aa-rect32)
+	left: to round-down a.left
+	right: to round-up a.right
+	bottom: to round-down a.bottom
+	top: to round-up a.top
++show string(a grid-rect) = "{a.bottom-left} to {a.top-right}"
++grid-rect grid-rect grammar()
+	parse: of iter
+		do unless try-take iter, "empty"
+		bottom-left = parse grid-pos, iter
+		assert try-take iter, " to " else inner-parse-error " to "
+		top-right = parse grid-pos, iter
+		bottom-left: bottom-left, top-right: top-right
++any bool(a grid-rect)
+	any a.size
++size nat-size(a grid-rect)
+	width: to a.right - a.left
+	height: to a.top - a.bottom
++area nat32(a grid-rect) = area a.size
++width nat16(a grid-rect)
+	to a.right - a.left
++height nat16(a grid-rect)
+	to a.top - a.bottom
++shorter-side nat16(a grid-rect)
+	min a.width, a.height
++longer-side nat16(a grid-rect)
+	max a.width, a.height
++is-square bool(a grid-rect) = a.width == a.height
++bottom-left grid-pos(a grid-rect) = a.left, a.bottom
++bottom-right grid-pos(a grid-rect) = a.right, a.bottom
++top-left grid-pos(a grid-rect) = a.left, a.top
++top-right grid-pos(a grid-rect) = a.right, a.top
++center grid-pos(a grid-rect)
+	x: divide-and-round-down a.left + a.right, 2
+	y: divide-and-round-down a.bottom + a.top, 2
++subscript bool(a grid-rect, pos grid-pos)
+	a.left <= pos.x and pos.x < a.right and a.bottom <= pos.y and pos.y < a.top
++contains bool(a grid-rect, b grid-rect)
+	# Empty bounds is always empty, regardless of its position
+	not any b or
+	a.left <= b.left and b.right <= a.right and a.bottom <= b.bottom and b.top <= a.top
++ + grid-rect(a grid-rect, diff grid-displacement)
+	left: a.left + diff.x
+	right: a.right + diff.x
+	bottom: a.bottom + diff.y
+	top: a.top + diff.y
++ - grid-rect(a grid-rect, diff grid-displacement)
+	a + -diff
++overlaps bool(a grid-rect, b grid-rect)
+	overlaps a.left, a.right, b.left, b.right and overlaps a.bottom, a.top, b.bottom, b.top
+-overlaps bool(min-a int16, max-a int16, min-b int16, max-b int16)
+	max-a > min-b and max-b > min-a
+| The smallest {grid-rect} containing both {rect} and {pos}
++ | grid-rect(rect grid-rect, pos grid-pos)
+	rect | pos.square1
++ | grid-rect(pos grid-pos, rect grid-rect)
+	pos.square1 | rect
+| The smallest {grid-rect} containing both {a} and {b}
++ | grid-rect(a grid-rect, b grid-rect)
+	if not any a
+		b
+	elif not any b
+		a
+	else
+		left: min a.left, b.left
+		right: max a.right, b.right
+		bottom: min a.bottom, b.bottom
+		top: max a.top, b.top
++ union_[col] grid-rect(values col) (col, grid-rect) some
+	union_ values, {it}
++ union_[col, elem] grid-rect(values col, f grid-rect mut(value elem)) (col, elem) some
+	fold (), values, of x, y then x | f[y]
+| Intersection of {a} and {b}.
++ & grid-rect(a grid-rect, b grid-rect)
+	do if overlaps a, b
+	left: max a.left, b.left
+	right: min a.right, b.right
+	bottom: max a.bottom, b.bottom
+	top: min a.top, b.top
+| Moves {inner} to stay within {outer} without changing its size.
+| If {inner} is too big, it will get centered.
++try-move-within grid-rect(outer grid-rect, inner grid-rect)
+	left int16, right int16 = if inner.width > outer.width
+		outer.center.x - inner.width.to / 2, outer.center.x + inner.width.to / 2
+	elif inner.left < outer.left
+		outer.left, outer.left + inner.width.to
+	elif inner.right > outer.right
+		outer.right - inner.width.to, outer.right
+	else
+		inner.left, inner.right
+	bottom int16, top int16 = if inner.height > outer.height
+		outer.center.y - inner.height.to / 2, outer.center.y + inner.height.to / 2
+	elif inner.bottom < outer.bottom
+		outer.bottom, outer.bottom + inner.height.to
+	elif inner.top > outer.top
+		outer.top - inner.height.to, outer.top
+	else
+		inner.bottom, inner.top
+	left: left, right: right, bottom: bottom, top: top
+| Clamps the position to the rect
++nearest grid-pos(a grid-rect, pos grid-pos)
+	assert any a
+	x: if pos.x < a.left then a.left elif pos.x >= a.right then a.right - 1 else pos.x
+	y: if pos.y < a.bottom then a.bottom elif pos.y >= a.top then a.top - 1 else pos.y
+| Subtract {amount} tiles on all sides.
+| This never throws; it returns an empty rectangle when {amount} is too large.
++shrink grid-rect(a grid-rect, amount nat16)
+	amt int16 = amount.clamp-to
+	left: if amount > a.width / 2 then a.center.x else a.left + amt
+	right: if amount > a.width / 2 then a.center.x else a.right - amt
+	bottom: if amount > a.height / 2 then a.center.y else a.bottom + amt
+	top: if amount > a.height / 2 then a.center.y else a.top - amt
++expand grid-rect(a grid-rect) = expand a, 1
+| Adds {amount} tiles on all sides
++expand grid-rect(a grid-rect, amount nat16)
+	amt int16 = amount.to
+	left: a.left - amt
+	right: a.right + amt
+	bottom: a.bottom - amt
+	top: a.top + amt
+| Since {right} and {top} are exclusive, this is true for points at `right - 1` or `top - 1`
++is-on-edge dir4?(a grid-rect, pos grid-pos)
+	do if a[pos]
+	if pos.y == a.top - 1
+		north
+	elif pos.x == a.right - 1
+		east
+	elif pos.y == a.bottom
+		south
+	elif pos.x == a.left
+		west
++as-index nat16?(a grid-rect, pos grid-pos)
+	do if a[pos]
+	x = pos.x - a.left
+	y = pos.y - a.bottom
+	y.to::nat16 * a.width + x.to::nat16
++pos-of-index grid-pos?(a grid-rect, index nat16)
+	do if index::nat32 < a.area
+	a.left + (index % a.width).to, a.bottom + (index / a.width).to
+
++all-rows record(rect grid-rect)
++size nat32(a all-rows) = a.rect.height
++some bool(a all-rows, f bool mut(x grid-pos-row))
+	some a.rect.bottom .. a.rect.top, of y
+		f[a.rect.left, a.rect.right, y]
++some-reverse bool(a all-rows, f bool mut(x grid-pos-row))
+	some-reverse a.rect.bottom .. a.rect.top, of y
+		f[a.rect.left, a.rect.right, y]
+
++grid-pos-row record(left int16, right int16, y int16)
++size nat32(a grid-pos-row) = to a.right - a.left
++some bool(a grid-pos-row, f bool mut(x grid-pos))
+	some a.left .. a.right, {f[it, a.y]}
+
++all-positions record(rect grid-rect)
++size nat32(a all-positions)
+	area a.rect
++some bool(a all-positions, f bool mut(x grid-pos))
+	some a.rect.bottom .. a.rect.top, of y
+		some a.rect.left .. a.rect.right, of x
+			f[x, y]
++subscript grid-pos(a all-positions, index nat32)
+	assert index < a.size else index-too-big index, a.size
+	dx int16 = to index % a.rect.width
+	dy int16 = to index / a.rect.width
+	a.rect.bottom-left + (dx, dy)
+
++nat-size record
+	width nat16
+	height nat16
++new nat-size()
+	0, 0
++any bool(a nat-size)
+	a != ()
++square nat-size(width nat16)
+	width, width
++area nat32(a nat-size)
+	a.width * a.height
++to grid-pos(a nat-size)
+	a.width.to, a.height.to
++to grid-displacement(a nat-size)
+	a.width.to, a.height.to
++ + nat-size(a nat-size, b nat-size)
+	a.width + b.width, a.height + b.height
++ - nat-size(a nat-size, b nat-size)
+	a.width - b.width, a.height - b.height
++ * nat-size(a nat-size, n nat16)
+	a.width * n, a.height * n
++ * nat-size(a nat-size, b nat-size)
+	a.width * b.width, a.height * b.height
++contains bool(a nat-size, pos grid-pos)
+	pos.x >= 0 and pos.x < a.width.to and pos.y >= 0 and pos.y < a.height.to
++ * size2-32(a nat-size, b size2-32)
+	a.width.to * b.width, a.height.to * b.height
++ * size2-32(a size2-32, b nat-size)
+	b * a
+
+| This is like a {grid-rect} that may be infinite in any or all directions.
+| Note: `()` bounds are infinite in all directions, not an empty rect.
++partial-bounds record
+	| Inclusive (if present)
+	left int16? = ()
+	| Exclusive (if present)
+	right int16? = ()
+	| Inclusive (if present)
+	bottom int16? = ()
+	| Exclusive (if present)
+	top int16? = ()
+do
+	if left and right
+		assert left <= right
+	if bottom and top
+		assert bottom <= top
++subscript bool(a partial-bounds, pos grid-pos)
+	(not a.left or pos.x >= a.left) and
+	(not a.right or pos.x < a.right) and
+	(not a.bottom or pos.y >= a.bottom) and
+	(not a.top or pos.y < a.top)
+| Prevent going as far as {pos} in the given {dir}
++exclusive-pos partial-bounds(pos grid-pos, dir dir4)
+	match dir
+	as north
+		top: pos.y
+	as east
+		right: pos.x
+	as south
+		bottom: pos.y + 1
+	as west
+		left: pos.x + 1
++ | partial-bounds(a partial-bounds, b partial-bounds)
+	left: min a.left, b.left
+	right: max-for-union a.right, b.right
+	bottom: min a.bottom, b.bottom
+	top: max-for-union a.top, b.top
+-max-for-union[t] t?(a t?, b t?) t compare
+	if a and b then max a, b
++ & partial-bounds(a partial-bounds, b partial-bounds)
+	left: max a.left, b.left
+	right: min-for-intersection a.right, b.right
+	bottom: max a.bottom, a.bottom
+	top: min-for-intersection a.top, b.top
+-min-for-intersection[t] t?(a t?, b t?) t compare
+	if a and b
+		min a, b
+	else
+		a or b
++intersection[t] partial-bounds(values t[], f partial-bounds mut(x t))
+	fold (), values, of x, y then x & f[y]

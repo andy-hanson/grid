@@ -1,0 +1,134 @@
+import
+	../geometry
+	../grid-set
+
++visibility-kind enum
+	| Can see things in front and to the sides
+	strict
+	| Can also see things 1 tile behind you
+	behind1
+	| Can see equally well in any direction
+	all-directions
+
++is-visible bool
+	walls virtual-grid-set
+	from-pos grid-pos
+	facing dir4
+	to-pos grid-pos
+	max-distance float32
+	kind visibility-kind
+do
+	set = all-visible-tiles walls, from-pos, facing, max-distance, kind
+	set[to-pos]
+
++all-visible-tiles grid-set
+	blocks-sight virtual-grid-set
+	from-pos grid-pos
+	facing dir4
+	max-distance float32
+	kind visibility-kind
+do
+	do unless blocks-sight[from-pos]
+	do with out in build
+	out ~= from-pos
+	match kind
+	as strict
+		()
+	as behind1
+		behind-you = from-pos - facing
+		left = from-pos + facing.rotate-left
+		right = from-pos + facing.rotate-right
+		out ~= behind-you
+		# Can see diagonally behind the player, unless they are next to a wall.
+		# Can see a wall back-left if you are in a corner.
+		if (if blocks-sight[left] then blocks-sight[behind-you] else true)
+			out ~= behind-you + rotate-left facing
+		if (if blocks-sight[right] then blocks-sight[behind-you] else true)
+			out ~= behind-you + rotate-right facing
+	as all-directions
+		()
+	each-visible-tile from-pos, max-distance, facing, blocks-sight, out
+	if kind == all-directions
+		each-visible-tile from-pos, max-distance, -facing, blocks-sight, out
+
+-octants-for-dir dir8[](a dir4)
+	match a
+	as west
+		south, southwest, west, northwest
+	as east
+		north, northeast, east, southeast
+	as north
+		west, northwest, north, northeast
+	as south
+		east, southeast, south, southwest
+
+| Transforms the relative displacement to the world displacement
+-transform-displacement grid-displacement(a grid-displacement, octant dir8)
+	match octant
+	as north then -a.x, -a.y
+	as northeast then -a.y, -a.x
+	as east then -a.y, a.x
+	as southeast then -a.x, a.y
+	as south then a.x, a.y
+	as southwest then a.y, a.x
+	as west then a.y, -a.x
+	as northwest then a.x, -a.y
+
+-each-visible-tile void(center grid-pos, radius float32, dir dir4, walls virtual-grid-set, out grid-pos builder)
+	# This algorithm lists some tiles twice, but we are building a set so it's fine
+	for octant in octants-for-dir dir
+		visible-tiles-in-row center, 1, 1, 0, radius, octant, walls, out
+
+# https://www.roguebasin.com/index.php/FOV_using_recursive_shadowcasting
+-visible-tiles-in-row void
+	center grid-pos
+	row int16
+	initial-start float32
+	end float32
+	radius float32
+	octant dir8
+	walls virtual-grid-set
+	out grid-pos builder
+do
+	start mut = initial-start
+	do if start > end
+	radius-squared nat32 = to round-up radius * radius
+	blocked mut = false
+	for j in row .. radius.round-up.to
+		do unless blocked
+		# This is in coordinates relative to the octant
+		diff mut grid-displacement = -j - 1, -j
+		new-start mut float32 = 0
+		while diff.x <= 0
+			diff +:= 1, 0
+			pos = center + transform-displacement diff, octant
+			l-slope = left-slope diff
+			r-slope = right-slope diff
+			if start <= r-slope
+				()
+			elif end >= l-slope
+				diff := 1, 0 # break
+			else
+				# Can't see through a corner
+				next = diff + (1, 0)
+				if walls[center + transform-displacement next, octant] and next.left-slope == start
+					()
+				elif diff.length-squared <= radius-squared
+					out ~= pos
+
+				if blocked
+					if walls[pos]
+						new-start := r-slope
+					else
+						blocked := false
+						start := new-start
+				else
+					if walls[pos]
+						blocked := true
+						visible-tiles-in-row center, j + 1, start, l-slope, radius, octant, walls, out
+						new-start := r-slope
+
+-left-slope float32(a grid-displacement)
+	(a.x.to - 0.5) / (a.y.to + 0.5)
+-right-slope float32(a grid-displacement)
+	(a.x.to + 0.5) / (a.y.to - 0.5)

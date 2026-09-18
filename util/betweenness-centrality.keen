@@ -1,0 +1,109 @@
+import
+	keen/bits
+	keen/col/mut-stack
+	keen/col/mut-queue
+	../geometry
+	../grid-set
+	../sparse-grid
+
+| Position with the highest betweenness centrality.
++betweenest grid-pos(set grid-set)
+	assert any set
+	info = info set
+	max-index = max-by! info.set.size, of pos
+		if info.set[pos] then info.betweenness-centrality[pos] else -infinity
+	pos-of-index! info.bounds, max-index.to
+
+| Finds the point with the highest betweenness centrality, removes it, repeats.
++interactive-betweenest grid-pos[](set grid-set, n nat)
+	assert n <= set.size else index-too-big n, set.size + 1
+	remaining mut = set
+	for _ in 0 .. n
+		pos = betweenest remaining
+		remaining -:= pos
+		pos
+
++betweenness-centrality float32 sparse-grid(set grid-set)
+	info = info set
+	make set, of pos
+		info.betweenness-centrality[as-index! info.bounds, pos]
+
+-info record
+	bounds grid-rect
+	set bool[]
+	betweenness-centrality float32[]
+-info info(set grid-set)
+	# Brandes' algorithm
+
+	# For performance, use 'nat' positions and plain arrays, not grids (to avoid cost of converting grid-pos to index)
+	# Expand the bounds so that the neighbor of a position is always within bounds.
+	bounds = expand set.bounds
+	set2 bool[] = for pos in all-positions bounds then set[pos]
+	width nat = bounds.width
+	area = area bounds
+	res float32 buffer = n-of area, 0
+	dependency float32 buffer = n-of area, 0
+	# This will be an integral value, but for performance it's left as a float
+	path-count float32 buffer = n-of area, 0
+	prev dirs buffer = n-of area, ()
+	distance nat16 buffer = n-of area, max-value
+	queue nat mut-queue = ()
+	path nat mut-stack = ()
+	for source in set2.size
+		do if set2[source]
+		fill dependency, 0
+		fill path-count, 0
+		fill prev, ()
+		fill distance, max-value
+		path-count[source] := 1
+		distance[source] := 0
+		queue ~= source
+		while u = dequeue queue
+			path ~= u
+			for d in members::dir4[]
+				v = move u, d, width
+				do if set2[v]
+				u-plus-1 = wrap-add distance[u], 1
+				if distance[v] == max-value
+					distance[v] := u-plus-1
+					queue ~= v
+				if distance[v] == u-plus-1
+					trusted path-count[v] unsafe-add:= path-count[u]
+					prev[v] |:= (-d).to
+		# Back-propagation
+		while v = pop path
+			for prev-dir in prev[v]
+				u = move v, prev-dir, width
+				dependency[u] +:= trusted
+					ratio = unsafe-div path-count[u], path-count[v]
+					unsafe-mul ratio, unsafe-add dependency[v], 1
+			unless v == source
+				trusted res[v] unsafe-add:= dependency[v]
+
+	bounds: bounds
+	set: set2
+	betweenness-centrality: trusted cast-immutable res
+
+-move nat(a nat, dir dir4, width nat)
+	match dir
+	as north
+		wrap-add a, width
+	as east
+		wrap-add a, 1
+	as south
+		wrap-sub a, width
+	as west
+		wrap-sub a, 1
+
+-dirs flags(north, east, south, west)
+-to dirs(a dir4)
+	match a
+	as north then north
+	as east then east
+	as south then south
+	as west then west
+-some bool(a dirs, f bool mut(x dir4))
+	(if a[north] then f[north]) or
+	(if a[east] then f[east]) or
+	(if a[south] then f[south]) or
+	(if a[west] then f[west])

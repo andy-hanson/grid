@@ -1,0 +1,43 @@
+import
+	./geometry
+
+| For small grids only.
+| This precomputes transitions from every index to every other index.
+| The indices must be {nat8}s.
+| Associates an index with each position.
++grid-indices record
+	area nat8
+	-precomputed nat8[]
++ == bool(a grid-indices, b grid-indices)
+	trusted a.area == b.area
++ <=> comparison(a grid-indices, b grid-indices)
+	trusted a.area <=> b.area
++hash void(a grid-indices, state hash-state)
+	trusted hash a.area, state
++to json(a grid-indices)
+	area: a.area.to
++to grid-indices(a json)
+	a["area"].to
++new grid-indices(size nat-size)
+	assert size.area < max-value::nat8
+	width nat8 = size.width.to
+	height nat8 = size.height.to
+	area = width * height
+	area: area
+	precomputed: for* dir in members::dir4[]
+		for i in 0::nat8 .. area
+			match dir
+			as north
+				res = i + width
+				if res < area then res else max-value
+			as east
+				res = i + 1
+				if res % width == 0 then max-value else res
+			as south
+				if i >= width then i - width else max-value
+			as west
+				if i % width == 0 then max-value else i - 1
+| Returns an empty option if the move would exit the grid
++move-in-dir nat8?(from nat8, dir dir4, config grid-indices)
+	res = config.precomputed[dir.to::nat8 * config.area + from]
+	unless res == max-value then res

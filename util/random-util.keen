@@ -1,0 +1,97 @@
+| Functions for choosing random things in grids
+import
+	keen/random/random
+	keen/random/util
+	../geometry
+	../grid-set
+	../mut-grid-set
+	./more-geometry
+
++try-random-where[t] t?(choices t[], f bool mut(x t)) random
+	remaining t mut[] = to choices
+	shuffle remaining
+	res mut t? = ()
+	until res or not any remaining
+		x = pop! remaining
+		if f[x]
+			res := x
+	res
+
+| Unlike {choose-different-random-positions-in}, this tries to avoid choosing positions near each other.
+| If {n} is more than the size of {within}, this just returns {within}.
++choose-distant-random-positions-in grid-set(within grid-set, n nat) random
+	choose-distant-random-positions-in within, n, ()
+| Adds an additional set of points to be distant from
++choose-distant-random-positions-in grid-set(within grid-set, n nat, also-distant-from grid-set) random
+	if n > within.size
+		within
+	else
+		to-be-distant-from mut grid-pos[] = also-distant-from.to
+		for _ in 0 .. n
+			candidates grid-pos[] = for _ in 0 .. 4
+				random-where! within, {not contains to-be-distant-from, it}
+			furthest = max-by! candidates, of pos
+				(min-of to-be-distant-from, {distance pos, it}) else 0
+			to-be-distant-from ~:= furthest
+			furthest
+
++choose-different-random-positions-in grid-set(rect grid-rect, n nat32) random
+	to randoms-without-replacement rect, n
+-size nat32(a grid-rect) = area a
+-subscript grid-pos(a grid-rect, index nat32) = pos-of-index! a, index.to
+
++choose-different-random-positions-in grid-set(grid grid-set, n nat32) random
+	to randoms-without-replacement grid, n
+
+| May return less than {n} positions if there were no close positions.
+| May even return less than {n} even if it is possible to pack in that many.
++random-positions-with-min-distance grid-set(grid grid-set, n nat32, min-distance float32) random
+	random-positions-with-min-distance grid, n, min-distance, ()
+| Also keeps the {min-distance} away from {avoid}
++random-positions-with-min-distance grid-set(grid grid-set, n nat32, min-distance float32, avoid grid-set) random
+	random-positions-with-min-distance-where grid, n, min-distance, avoid, {true}
+
++random-positions-with-min-distance-where grid-set
+	grid grid-set
+	n nat32
+	min-distance float32
+	avoid grid-set
+	f bool mut(x grid-pos)
+do random
+	res mut grid-set = avoid
+	_ = every 0 .. n, of _
+		x = random-where grid, of pos
+			if nearest = nearest res, pos
+				distance = distance pos, nearest
+				distance >= min-distance and f[pos]
+			else
+				true
+		if x
+			res |:= x
+			true
+	res - avoid
+
++remove-random grid-pos(grid mut-grid-set) random
+	res = random grid
+	grid -= res
+	res
++remove-random (grid-pos, grid-set)?(a grid-set) random
+	do if any a
+	pos = random a
+	pos, a - pos
+
+| Random point inside {bounds}.
+| (This will not be on the right or top edge since those are not considered inside.)
++random-point grid-pos(bounds grid-rect) random
+	assert any bounds
+	bounds.bottom-left + bounds.size.random-size.to
+
++random-neighbor-in grid-pos?(available virtual-grid-set, center grid-pos) random
+	random-where center.neighbors4, {available[it]}
+
+| Random size that is smaller than {max-exclusive}.
+| Meaning this will be less wide and less tall than {max-exclusive}.
++random-size nat-size(max-exclusive nat-size) random
+	assert any max-exclusive
+	width: random max-exclusive.width
+	height: random max-exclusive.height

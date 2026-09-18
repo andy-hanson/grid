@@ -1,0 +1,62 @@
+import
+	./geometry
+	./grid-set
+	./mut-sparse-grid
+
++mut-grid-entities[t] record mut
+	~entity-at-pos nat16 mut-sparse-grid
+	~entities t mut[]
+
++list-new[t] t mut-grid-entities(entities t[]) t occupied-space
+	to entities
++move-to[t] t[](a t mut-grid-entities) t occupied-space
+	move-to a.entities
++to[t] t mut-grid-entities(entities t[]) t occupied-space
+	res t mut-grid-entities = (), ()
+	for x in entities
+		res ~= x
+	res
+
++any[t] bool(a t mut-grid-entities)
+	any a.entities
++size[t] nat32(a t mut-grid-entities)
+	a.entities.size
++subscript[t] t?(a t mut-grid-entities, pos grid-pos)
+	a.entities?[a.entity-at-pos[pos]]
+
++remove-entity[t] void(a t mut-grid-entities, entity-index nat16) t occupied-space
+	assert entity-index::nat < a.entities.size else index-too-big entity-index, a.entities.size
+	entity = remove-at a.entities, entity-index
+	a.entity-at-pos -= entity.occupied-space
+	a.entity-at-pos map-values= of value
+		match value <=> entity-index
+		as less
+			value
+		as equal
+			throw unreachable
+		as greater
+			value - 1
+
++update-entity[t] void(a t mut-grid-entities, entity-index nat16, new-entity t) t occupied-space
+	assert entity-index::nat < a.entities.size else index-too-big entity-index, a.entities.size
+	diff = diff a.entities[entity-index].occupied-space, new-entity.occupied-space
+	forbid some diff.added, a.entity-at-pos[it]
+	a.entities[entity-index] := new-entity
+	for x in diff.removed
+		a.entity-at-pos -= x
+	for x in diff.added
+		a.entity-at-pos[x] := entity-index
+
++ ~=[t] void(a t mut-grid-entities, value t) t occupied-space
+	where = occupied-space value
+	assert any where
+	for pos in where
+		forbid a.entity-at-pos[pos] else entities-overlap pos
+	index nat16 = a.entities.size.to
+	a.entities ~= value
+	for pos in where
+		a.entity-at-pos[pos] := index
+
+entities-overlap record(pos grid-pos) exception case
+show string(a entities-overlap)
+	"There are multiple entities at {a.pos}"

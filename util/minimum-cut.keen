@@ -1,0 +1,120 @@
+import
+	keen/col/enum-set
+	keen/col/mut-enum-set
+	keen/col/mut-queue
+	../bounded-grid
+	../geometry
+	../grid-set
+	../mut-bounded-grid
+	../mut-grid-set
+	../util/reachability
+
+| This will happen if start == end, they are right next to each other, or you passed an overly restrictive 'cuttable'
++no-cut-possible record exception case
++show string(_ no-cut-possible)
+	"Not possible to cut enough vertices"
+
+| Note: This usually just cuts around the start (guaranteed to cut <= 4 vertices).
+| For a more interesting cut you probably want the overload with restricted 'cuttable'.
++minimum-vertex-cut grid-set(walkable grid-set, start grid-pos, end grid-pos)
+	minimum-vertex-cut walkable, start, end, walkable - start - end
+| May throws {no-cut-possible}. (Returns an empty result if no cut is necessary)
++minimum-vertex-cut grid-set(walkable grid-set, start grid-pos, end grid-pos, cuttable grid-set)
+	do if walkable[start] and walkable[end]
+	forbid start == end or is-next-to start, end or find-path (walkable - cuttable), start, end else no-cut-possible
+	capacity capacities = walkable, cuttable - start - end
+	flow = maximum-flow capacity, start, end
+	res = minimum-cut capacity, flow, start
+	assert contains-all cuttable, res
+	res
+
+-capacities record
+	walkable grid-set
+	cuttable grid-set
+-bounds grid-rect(a capacities)
+	bounds a.walkable
+-subscript capacity-value(a capacities, pos grid-pos)
+	if a.walkable[pos]
+		if a.cuttable[pos]
+			one
+		else
+			inf
+
+-minimum-cut grid-set(capacity capacities, flow edge-kind enum-set bounded-grid, start grid-pos)
+	seen-in mut-grid-set = start,
+	seen-out mut-grid-set = start,
+	# Stores output positions
+	queue (grid-pos, vertex-kind) mut-queue = (start, output),
+	while source-node, kind = dequeue queue
+		match kind
+		as input
+			cap = capacity[source-node]
+			residual = if flow[source-node][self] then decr cap else cap
+			if residual != zero and try-add seen-out, source-node
+				queue ~= source-node, output
+			# Where there is flow, there is a backward residual edge
+			# So now consider the input vertex
+			for dir in members::dir4[]
+				prev-node = source-node + dir
+				if capacity.bounds[prev-node] and flow[prev-node][(-dir).to] and try-add seen-out, prev-node
+					queue ~= prev-node, output
+		as output
+			if flow[source-node][self] and try-add seen-in, source-node
+				queue ~= source-node, input
+			for dir in members::dir4[]
+				dest-node = source-node + dir
+				do if capacity.bounds[dest-node]
+				do if try-add seen-in, dest-node
+				queue ~= dest-node, input
+	filter seen-in, of pos
+		capacity[pos] != zero and not seen-out[pos]
+
+-vertex-kind enum(input, output)
+-edge-kind enum(self, north, east, south, west)
+-to edge-kind(a dir4)
+	match a
+	as north then north
+	as east then east
+	as south then south
+	as west then west
+
+-maximum-flow edge-kind enum-set bounded-grid(capacity capacities, start grid-pos, dest grid-pos)
+	bounds = capacity.bounds
+	edge-flows edge-kind mut-enum-set bounded-grid = make bounds
+	while
+		queue grid-pos mut-queue = start,
+		came-from dir4? mut-bounded-grid = make bounds
+		while not came-from[dest] and cur = dequeue queue
+			for dir in members::dir4[]
+				next = cur + dir
+				if bounds[next] and not came-from[next] and next != start
+					came-from[next] := dir
+					# Now handle the self edge. (All other edges have infinite capacity so no need to check for that.)
+					cap = capacity[next]
+					if cap > edge-flows[next][self]
+						queue ~= next
+		if came-from[dest]
+			edge-end mut = dest
+			while dir = came-from[edge-end]
+				edge-start = edge-end - dir
+				edge-flows[edge-start] |= dir.to
+				edge-flows[edge-start] |= self
+				edge-end := edge-start
+			true
+	make edge-flows.bounds, edge-flows[it].move-to
+
+-capacity-value enum(zero, one, inf)
+-new capacity-value() = zero
+- decr capacity-value(a capacity-value)
+	match a
+	as zero then throw unreachable
+	as one then zero
+	as inf then inf
+- > bool(a capacity-value, b bool)
+	match a
+	as zero
+		false
+	as one
+		not b
+	as inf
+		true
